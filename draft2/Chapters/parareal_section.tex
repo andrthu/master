@@ -1,0 +1,287 @@
+\section{Parareal}\label{Parareal_sec}
+We see that when we decompose the time domain, the original initial value problem (4.1) brakes down to a system of initial value problems of size $N$ (4.2). The idea of \cite{baffico2002parallel} is then first to define a fine solution operator $\bold F_{\Delta T}$, which given an initial condition $\lambda_i$ at time $T_i$, evolves $\lambda_i$, using a fine scheme applied to the $i$th equation (4.2), from time $T_i$ to $T_{i+1}$. Meaning:
+\begin{align*}
+\hat \lambda_{i+1}= u^i(T_{i+1})=\bold F_{\Delta T}(\lambda_i)
+\end{align*} 
+We name $\bold F_{\Delta T}$ the fine propagator, and note that letting $\hat \lambda_{1}=\bold F_{\Delta T}(u_0)$, and then applying $\bold F_{\Delta T}$ sequentially to $\hat \lambda_{i}$, is the same as solving (4.1), using the underlying numerical method of the fine propagator. However, we intend to use $\bold F_{\Delta T}$ simultaneously on a given set of initial values $\Lambda=(\lambda_0=u_0,\lambda_1,...,\lambda_{N-1})$, and not sequentially. Since we also want $\hat{\lambda_i}$ to be as close as possible to $\lambda_i$ for $i=1,...,N-1$, we define a coarse propagator $\bold G_{\Delta T}$, and use this operator to predict the $\Lambda$ values. The predictions are made by sequentially applying the coarse propagator to the system (4.2). This means:
+\begin{align}
+\lambda_i^0 &= \bold G_{\Delta T}(\lambda_{i-1}^0),\quad i=1,...,N-1 \\
+\lambda_0^0&=u_0
+\end{align} 
+Once we have these predicted initial values, we can apply the fine propagator on all the equations in system (4.2) simultaneously, and then use the difference between our fine solution  and coarse solution $\delta_{i-1}^0= \bold F_ {\Delta T}( \lambda_{i-1}^0)-\bold G_ {\Delta T}( \lambda_{i-1}^0)$ at time $T_i$ to correct $\lambda_i^0$. The correction for time $T_i$, is done by using the coarse propagator on the already corrected $\lambda_{i-1}^1$, and then add the difference $\delta_{i-1}^0$ to $\bold G_ {\Delta T}(\lambda_{i-1}^1)$. When this sequential process is done, we have a new set of initial conditions $\lambda_i^1$, $i=1,...,N-1$, which means that we can redo the correction, and the prediction-correction formulation of Parareal can then be written up as the following iteration:
+\begin{align}
+\lambda_{i}^{k+1} &= \bold G_ {\Delta T}(\lambda_{i-1}^{k+1})+\bold F_ {\Delta T}( \lambda_{i-1}^{k})-\bold G_ {\Delta T}( \lambda_{i-1}^{k}), \quad i=1,...,N-1 \label{pred_corr_PR} \\
+\lambda_0^k = u_0
+\end{align}
+Updating our initial conditions $\Lambda^k$ from iteration $k$ to iteration $k+1$, requires $N$ fine propagations, which we can do in parallel, and $N$ coarse propagations, whet we need to do sequentially. We can now write up a simple algorithm for doing $K$ steps of Parareal.
+\begin{align*}
+1:\quad&\textrm{$\bold{Set}$ $\lambda_0^0=u_0$} \\
+2:\quad&\textrm{$\bold{for}$ $i=1,...,N-1$:} \\
+&\quad\bold{Set} \ \lambda_i^0=\bold G_ {\Delta T}(\lambda_{i-1}^0) \\
+3:\quad&\textrm{$\bold{for}$ $k=1,...,K$:} \\
+&\quad\textrm{$\bold{Set}$ $\lambda_0^k=u_0$} \\
+&\quad\textrm{$\bold{Do}$ $\hat \lambda_i^k=\bold F_ {\Delta T}( \lambda_{i-1}^{k-1})$ in parallel} \\
+&\quad\textrm{$\bold{for}$ $i=1,...,N-1$:} \\
+&\quad \quad \quad \bold{Set} \ \lambda_{i}^{k} = \bold G_ {\Delta T}(\lambda_{i-1}^{k})+\hat\lambda_i^{k-1}-\lambda_i^{k-1}
+\end{align*}
+In the above algorithm we do $K$ iterations, where $K$ is a pre-chosen number. If one wanted to construct an actual Parareal algorithm, the iteration should instead terminate, when a certain stopping criteria is met. In general we want the iteration to stop when the Parareal solution is sufficiently close to the sequential solution. 
+\section{Algebraic formulation}
+In \cite{maday2002parareal} an algebraic reformulation of (\ref{pred_corr_PR}) is presented. The setting in \cite{maday2002parareal} is slightly different than the one we had in section \ref{Parareal_sec}, since they are trying to solve an optimal control problem with differential equation constraints, rather than to just solve a differential equation. Luckily for us the problem they are looking at is very much connected to that of solving the time decomposed differential equation system. The problem they solve follows below:
+\begin{align*}
+&\min_{\Lambda}\hat{J}(\Lambda) = \sum_{i=1}^{N-1} ||u^{i}(T_{i})-\lambda_{i}||^2 \\
+&\textrm{Subject to } \ u^{i}(T_{i}) = \bold F_{\Delta T}(\lambda_{i-1}) \ i=1,...,N
+\end{align*}
+In the above optimal control problem the $\bold F_{\Delta T}$ is the fine propagator from the previous section, and $u$ and $\Lambda$ is also as defined in section \ref{Parareal_sec}. What we immediately notice, is that we can find the solution of the above problem by setting $J(\Lambda)=0$, which gives us the solution $\lambda_{i}=\bold  u^{i}(T_{i})=F_{\Delta T}(\lambda_{i-1})$. The authors of \cite{maday2002parareal} then write this system on matrix form as:
+\begin{align}
+  \left[ \begin{array}{cccc}
+   \mathbbold{1} & 0 & \cdots & 0 \\  
+   -\bold{F}_{\Delta T} & \mathbbold{1} & 0 & \cdots \\ 
+   0 &-\bold{F}_{\Delta T} & \mathbbold{1}  & \cdots \\
+   0 &\cdots &-\bold{F}_{\Delta T} & \mathbbold{1}  \\
+   \end{array}  \right] 
+   \left[ \begin{array}{c}
+   \lambda_0 \\
+   \lambda_1 \\
+   \cdots \\
+   \lambda_{N-1} \\
+   \end{array}  \right] =
+   \left[ \begin{array}{c}
+   y^0 \\
+   0 \\
+   \cdots \\
+   0 \\
+   \end{array}  \right] \label{vir_mat_form_sys }
+\end{align}
+Or with notation:
+\begin{align}
+M \ \Lambda \ = \ H.\quad \textrm{With $M\in\mathbb{R}^{N\times N},H\in\mathbb{R}^N$ given by (\ref{vir_mat_form_sys }).} \label{vir_mat_sys}
+\end{align}
+We can solve system (\ref{vir_mat_form_sys }) by sequentially applying the fine propagator, but we again want to use the coarse propagator, so that we can run the fine propagator in parallel. We first define the coarse equivalent to $M$ as:
+\begin{align}
+\bar{M} = \left[ \begin{array}{cccc}
+   \mathbbold{1} & 0 & \cdots & 0 \\  
+   -\bold{G}_{\Delta T} & \mathbbold{1} & 0 & \cdots \\ 
+   0 &-\bold{G}_{\Delta T} & \mathbbold{1}  & \cdots \\
+   0 &\cdots &-\bold{G}_{\Delta T} & \mathbbold{1}   \\
+   \end{array}  \right]
+\end{align}
+Using $\bar{M}$, we can write up what turns out to be the Parareal iteration (\ref{pred_corr_PR}) in Matrix notation:
+\begin{align}
+\Lambda^{k+1} = \Lambda^k + \bar{M}^{-1}(H-M\Lambda^k) \label{matrix_iter1}
+\end{align}
+Looking at the (\ref{matrix_iter1}), we recognise the Parareal iteration as a preconditioned fix point iteration, where $\bar{M}^-1$ is the prconditioner.
+ \section{Parareal scheme}
+The Parareal scheme finds $\Lambda$, by solving the equation on the entire interval using a cheap scheme on a coarse resolution, and then using this coarse solution at the decomposed interval boundaries $\{T^n\}_{n=1}^{N-1}$ as $\lambda$s, for a fine solver $y$. We can then repeat this process, by propagating the jumps $S^n=y^{n-1}(T^n)-\lambda^n$ using the coarse scheme. This creates an iteration, that looks like this:
+\begin{align*}
+&(i) \ \textit{Set $S^n_k = y_k^{n-1}(T^n)-\lambda_k^n$} \\
+&(ii) \ \textit{Propogate the jumps with the coarse scheme to obtain $\delta_k$ using (\ref{propagator})} \\
+&(iii) \ \textit{Update $\lambda_{k+1}^n=y_k^{n-1}(T^n) + \delta_k^n$}
+\end{align*} 
+\\
+\\
+To illustrate how it works, we will set up the Parareal scheme for a simple ODE:
+\begin{align}
+\left\{
+     \begin{array}{lr}
+		\frac{\partial y}{\partial t}(t)=-ay(t) \ 				\textit{on $[0,T]$} \\
+		y(0)=y_0
+	\end{array}
+\right.	\label{ODE_eks}
+\end{align}
+If we discretize (\ref{ODE_eks}) using implicit Euler, we get:
+\begin{align}
+\left\{
+     \begin{array}{lr}
+		\frac{\lambda^{n+1}-\lambda^{n}}{\Delta T}+a\lambda^{n+1}=0  \\
+		\lambda^0=y_0
+	\end{array}
+\right.	\label{couarse_euler}
+\end{align}
+Notice that the interval $I$, is discretized using the same time difference as the time decomposition. Then we introduce $N$ new equations on each interval, i.e.
+\begin{align}
+\left\{
+     \begin{array}{lr}
+		\frac{\partial y^n}{\partial t}(t)=-ay^n(t) \ 				\textit{on $[T_n,T_{n+1}]$} \\
+		y(T_n)=\lambda^n
+	\end{array}
+\right. \label{interval_eqs}
+\end{align}
+We can now solve (\ref{interval_eqs}) independently either exactly or using some numerical scheme. So if we first solve (\ref{couarse_euler}) and then (\ref{interval_eqs}), and define $\lambda_1^n=\lambda^n$, $y_1^n(t)=y^n(t)$, we can set an initial jump $S_1^n=y_1^{n-1}(T^n)-\lambda_1^n$ and start the iterative jump propagation process. Lets now specify, whet is meant by \textit{propagate the jumps with the coarse scheme}:
+\begin{align}
+\left\{
+     \begin{array}{lr}
+		\frac{\delta_k^{n+1}-\delta_k^{n}}{\Delta T}+a\delta_k^{n+1}=\frac{S_k ^n}{\Delta T}  \\
+		\delta_k^0=0
+	\end{array}
+\right. \label{propagator}
+\end{align}
+\section{Pararal as an optimal control problem}
+An alternative formulation of the Parareal scheme for our simple ODE example (\ref{ODE_eks}), that will be important to us later, is given in \cite{maday2002parareal}. Here the authors first define a function $\bold F_{\Delta T}(\omega)$, which is the evaluation at $\Delta T$ of the solution of the equation:
+\begin{align}
+\left\{
+     \begin{array}{lr}
+		\frac{\partial y}{\partial t}(t)+ay=0  \\
+		y(0)=\omega
+	\end{array} 
+\right. \label{F_operator}
+\end{align}
+Using $\bold F_{\Delta T}(\omega)$ we can define the following constrained optimization problem:
+\begin{align*}
+&\min_{\Lambda}\hat{J}(\Lambda) = \sum_{n=1}^{N-1} (y_{n-1}(T_{n})-\lambda_{n}) \\
+&\textrm{Subject to } \ y_{n-1}(T_{n}) = \bold F_{\Delta T}(\lambda_{n-1}) \ n=1,...,N-1
+\end{align*}
+The solution to the above problem can then be stated as $\lambda_n = \bold{F}_{\Delta T}(\lambda_{n-1})$. The constraints are system of equations, and in matrix form can be written as:
+\begin{align}
+  \left[ \begin{array}{cccc}
+   \mathbbold{1} & 0 & \cdots & 0 \\  
+   -\bold{F}_{\Delta T} & \mathbbold{1} & 0 & \cdots \\ 
+   0 &-\bold{F}_{\Delta T} & \mathbbold{1}  & \cdots \\
+   0 &\cdots &-\bold{F}_{\Delta T} & \mathbbold{1}  \\
+   \end{array}  \right] 
+   \left[ \begin{array}{c}
+   \lambda_0 \\
+   \lambda_1 \\
+   \cdots \\
+   \lambda_{N-1} \\
+   \end{array}  \right] =
+   \left[ \begin{array}{c}
+   y^0 \\
+   0 \\
+   \cdots \\
+   0 \\
+   \end{array}  \right] \label{vir_mat_form_sys }
+\end{align}
+Or:
+\begin{align}
+M \ \Lambda \ = \ H.\quad \textrm{With $M\in\mathbb{R}^{N\times N},H\in\mathbb{R}^N$ given by (\ref{vir_mat_form_sys }).} \label{vir_mat_sys}
+\end{align}
+Solving (\ref{vir_mat_sys}) is equivalent with solving our ODE (\ref{ODE_eks}) sequentially, which we do not want to do. The idea of \cite{maday2002parareal} is then to define a coarse version of $\bold{F}_{\Delta T}$, and use it to formulate a Parareal iteration. As an example we define the coarse solver using implicit Euler:
+ \begin{align}
+\frac{\bold{G}_{\Delta T}(\omega) -\omega }{\Delta T } + A \bold{G}_{\Delta T}(\omega) = 0
+\end{align}  
+We then define the following iterative process to find the $\lambda$s:
+\begin{align}
+\lambda_{n+1}^{k+1} = \bold{G}_{\Delta T}(\lambda_{n}^{k+1}) + \bold{F}_{\Delta T}(\lambda_{n}^{k})-\bold{G}_{\Delta T}(\lambda_{n}^{k})
+\end{align} 
+In matrix form this looks like:
+\begin{align}
+\Lambda^{k+1} = \Lambda^k + \bar{M}^{-1}(H-M\Lambda^k) \label{matrix_iter1}
+\end{align}
+The matrix $\bar{M}\in\mathbb{R}^{N\times N}$ is the $\bold{G}_{\Delta T}$ version of $M$, i.e:
+\begin{align}
+\bar{M} = \left[ \begin{array}{cccc}
+   I & 0 & \cdots & 0 \\  
+   -\bold{G}_{\Delta T} & I & 0 & \cdots \\ 
+   0 &-\bold{G}_{\Delta T} & I  & \cdots \\
+   0 &\cdots &-\bold{G}_{\Delta T} & I   \\
+   \end{array}  \right]
+\end{align}
+
+\begin{table}[!h]
+\centering
+\caption{$\Delta t=10^{-3}$}
+\begin{tabular}{lrr}
+\toprule
+{}$N$ &  function speedup &     function time \\
+\midrule
+1 &  1.000000 &  0.000974 \\
+2 &  1.699825 &  0.000573 \\
+3 &  1.887597 &  0.000516 \\
+4 &  1.940239 &  0.000502 \\
+5 &  1.800370 &  0.000541 \\
+6 &  1.702797 &  0.000572 \\
+\bottomrule
+\end{tabular}
+\begin{tabular}{lrr}
+\toprule
+{} &  gradient speedup &    gradient time \\
+\midrule
+1 &  1.000000 &  0.001541 \\
+2 &  1.671367 &  0.000922 \\
+3 &  2.096599 &  0.000735 \\
+4 &  2.293155 &  0.000672 \\
+5 &  2.331316 &  0.000661 \\
+6 &  2.334848 &  0.000660 \\
+\bottomrule
+\end{tabular}
+\end{table}
+\begin{table}[!h]
+\centering
+\caption{$\Delta t=10^{-6}$}
+\begin{tabular}{lrr}
+\toprule
+{} $N$&  function speedup &    function time \\
+\midrule
+1 &  1.000000 &  0.867973 \\
+2 &  1.977376 &  0.438952 \\
+3 &  2.917517 &  0.297504 \\
+4 &  3.801797 &  0.228306 \\
+5 &  4.674438 &  0.185685 \\
+6 &  5.331202 &  0.162810 \\
+\bottomrule
+\end{tabular}
+\begin{tabular}{lrr}
+\toprule
+{} &  gradient speedup &    gradient time \\
+\midrule
+1 &  1.000000 &  1.504033 \\
+2 &  1.943738 &  0.773784 \\
+3 &  2.937054 &  0.512089 \\
+4 &  3.928148 &  0.382886 \\
+5 &  4.766144 &  0.315566 \\
+6 &  5.651349 &  0.266137 \\
+\bottomrule
+\end{tabular}
+\end{table}
+\begin{table}[!h]
+\centering
+\caption{$\Delta t=10^{-8}$}
+\begin{tabular}{lrr}
+\toprule
+{} $N$&  function speedup &      function time \\
+\midrule
+1 &  1.000000 &  87.568009 \\
+2 &  2.129080 &  41.129505 \\
+3 &  2.988265 &  29.303966 \\
+4 &  4.125267 &  21.227233 \\
+5 &  4.824215 &  18.151763 \\
+6 &  5.735492 &  15.267741 \\
+\bottomrule
+\end{tabular}
+\end{table}
+Then we set the time step to be $\Delta t = 10^{-2}$ and let $N=2$ be the number of decomposed subintervals. We solved problem (\ref{con J}-\ref{con E}) for increasing $\mu$ values, and looked at different ways to compare the solutions $v$ and $v^{\mu}$. We compared the function value these controls gave for both the penalized and non-penalized objective function, and the relative difference between $v$ and $v^{\mu}$ in numerical $L^2$-norm. We also looked at the maximal jump difference in the decomposed state equation for each penalized control solution. The results were as follows:
+\\
+\begin{table}[h]
+\centering
+\caption{Consistency of penalty method using 2 decompositions}
+\label{Cosistency_table}
+\begin{tabular}{lrrrr}
+\toprule 
+{} $\mu$&  $\frac{J(v_{\mu})-J(v)}{J(v)}$ &  $\frac{J_{\mu}(v_{\mu})-J_{\mu}(v)}{J_{\mu}(v)}$ &         $\sup_i\{y_{k_i}^i-y_{k_i}^{i+1}\}$ &    $\frac{||v_{\mu}-v||}{||v||}$ \\
+\midrule
+1.000000e+02 &      1.156696e-04 &            -6.364173e-03 &  2.592979e-02 &  4.354868e-03 \\
+2.000000e+02 &      2.910231e-05 &            -3.192244e-03 &  1.300628e-02 &  2.184385e-03 \\
+5.000000e+02 &      4.674259e-06 &            -1.279348e-03 &  5.212496e-03 &  8.754310e-04 \\
+1.000000e+03 &      1.170061e-06 &            -6.400835e-04 &  2.607916e-03 &  4.379957e-04 \\
+5.000000e+03 &      4.685038e-08 &            -1.280823e-04 &  5.218505e-04 &  8.764416e-05 \\
+7.000000e+03 &      2.390506e-08 &            -9.149070e-05 &  3.727640e-04 &  6.260540e-05 \\
+2.000000e+04 &      2.928726e-09 &            -3.202365e-05 &  1.304752e-04 &  2.191336e-05 \\
+2.000000e+05 &      2.929008e-11 &            -3.202457e-06 &  1.304789e-05 &  2.191569e-06 \\
+3.000000e+05 &      1.302587e-11 &            -2.134974e-06 &  8.698604e-06 &  1.461772e-06 \\
+4.000000e+05 &      7.331416e-12 &            -1.601231e-06 &  6.523956e-06 &  1.097020e-06 \\
+5.000000e+05 &      4.686680e-12 &            -1.280985e-06 &  5.219167e-06 &  8.766907e-07 \\
+6.000000e+05 &      3.256551e-12 &            -1.067488e-06 &  4.349307e-06 &  7.307433e-07 \\
+1.000000e+06 &      1.171837e-12 &            -6.404931e-07 &  2.609585e-06 &  4.384698e-07 \\
+1.000000e+07 &      1.436812e-14 &            -6.404934e-08 &  2.609587e-07 &  4.724119e-08 \\
+2.000000e+07 &      7.016988e-15 &            -3.202467e-08 &  1.304793e-07 &  2.669496e-08 \\
+1.000000e+08 &      2.338996e-15 &            -6.404934e-09 &  2.609587e-08 &  2.382013e-08 \\
+1.000000e+11 &      5.012134e-15 &            -6.400495e-12 &  2.605338e-11 &  2.378564e-08 \\
+1.000000e+12 &      4.009707e-15 &            -6.365411e-13 &  2.607248e-12 &  2.378561e-08 \\
+1.000000e+13 &      1.002427e-15 &            -6.348703e-14 &  2.646772e-13 &  1.375728e-08 \\
+1.000000e+14 &      1.837783e-15 &            -5.346277e-15 &  2.708944e-14 &  1.375728e-08 \\
+1.000000e+16 &      2.004854e-15 &             9.355984e-15 &  3.108624e-15 &  1.375728e-08 \\
+\bottomrule
+\end{tabular}
+\end{table}
+\\
+What we need to note about the results in table \ref{Cosistency_table}, is that while difference in function value and state equation jump approach machine precision, the relative norm difference $\frac{||v_{\mu}-v||}{||v||}$ does not hit machine precision. The explanation of this is that all the terms in our functional are squared, and a difference of $10^{-8}$ is therefore actually quite close to machine precision, when squared. The jump differences are also squared, however the $\mu$ penalty counter balances this for these terms.

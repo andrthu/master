@@ -1,0 +1,170 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{booktabs}
+
+\usepackage{cite}
+
+
+\newtheorem{theorem}{Theorem}
+
+\usepackage{listings}
+\usepackage{color} %red, green, blue, yellow, cyan, magenta, black, white
+\definecolor{mygreen}{RGB}{28,172,0} % color values Red, Green, Blue
+\definecolor{mylilas}{RGB}{170,55,241}
+
+
+\usepackage{graphicx}
+\begin{document}
+\section{Intro}
+Want to discertize the problem:
+\begin{align}
+\left\{
+     \begin{array}{lr}
+       	y'(t)=\alpha y(t) +v(t), \ t \in (0,T)\\
+       	   y(0)=y_0
+     \end{array}
+   \right. \label{equation}
+\end{align}
+\begin{align}
+J(y,v) = \frac{1}{2}\int_0^Tv(t)^2dt + \frac{1}{2}(y(T)-y^T)^2
+\label{problem}
+\end{align}
+We know that the the reduced gradient of (\ref{problem}) is:
+\begin{align}
+\nabla\hat{J}(v) = v(t)+p(t) \label{gradiant}
+\end{align}
+where $p$ is the solution of the adjoint equation:
+\begin{align}   
+  \left\{
+     \begin{array}{lr}
+	-p'(t) = \alpha p(t) \\
+	p(T) = y(T)-y^T     \
+	\end{array}
+   \right. \label{adjoint}
+\end{align}
+We now want to discretize (\ref{equation}-\ref{adjoint}), so we can solve the problem numerically. What we particularly want, is an expression for the gradient. 
+\section{Finite difference}
+Before I state what the numerical gradient will be for the implicit end explicit Euler schemes, I will write up these schemes for our equations (\ref{equation}) and (\ref{adjoint}). First the implicit for the state equation:
+\begin{align}
+\frac{y^k-y^{k-1}}{\Delta t} &= \alpha y^{k} + v^{k} \\
+(1-\alpha\Delta t)y^{k} &= y^{k-1} +\Delta t v^{k} \\
+y^k &=\frac{y^{k-1} +\Delta t v^{k}}{1-\alpha\Delta t} \label{I_state}
+\end{align}
+Implicit Euler for the adjoint equation:
+\begin{align}
+-\frac{p^k-p^{k-1}}{\Delta t} -\alpha p^{k-1} &=0 \\
+(1-\Delta t\alpha)p^{k-1}&=p^k \\
+p^{k-1} &= \frac{p^k}{1-\Delta t\alpha} \label{I_adjoint}
+\end{align}
+The explicit scheme for the state equation reads:
+\begin{align}
+\frac{y^{k+1}-y^{k}}{\Delta t} &= \alpha y^{k} + v^{k} \\
+y^{k+1}&=(1 +\Delta t\alpha) y^{k} + \Delta t v^{k}\label{E_state}
+\end{align} 
+and the for the adjoint we have:
+\begin{align}
+-\frac{p^k-p^{k-1}}{\Delta t} -\alpha p^{k} &=0 \\
+p^{k-1} &=p^k(1 +\Delta t\alpha)\label{E_adjoint}
+\end{align}
+With these formulas in mind lets 
+\section{Numerical gradient}
+\begin{theorem}
+Discretizing the adjoint and state equation using the implicit Euler finite difference scheme, and evaluating the integral in the functional using the trapezoid rule, means that the numerical gradient will look like the following:
+\begin{align}
+\nabla J_{\Delta t}(v_{\Delta t}) = Mv_{\Delta t} + Bp_{\Delta t} \label{num_grad}
+\end{align}
+where $M$ and $B$ are the matrices:
+\begin{align*}
+M=\left[ \begin{array}{cccc}
+   \frac{1}{2}\Delta t & 0 & \cdots & 0 \\  
+   0& \Delta t & 0 & \cdots \\ 
+   0 &0 & \Delta t  & \cdots \\
+   0 &\cdots &0 & \frac{1}{2}\Delta t   \\
+   \end{array}  \right] 
+,B = \left[ \begin{array}{cccc}
+   0& 0 & \cdots & 0 \\  
+   \Delta t& 0 & 0 & \cdots \\ 
+   0 & \Delta t& 0  & \cdots \\
+   0 &\cdots & \Delta t& 0   \\
+   \end{array}  \right] 
+\end{align*}
+If one instead uses the explicit Euler finite difference scheme on the differential equations, the gradient will instead look like:
+\begin{align*}
+\nabla J_{\Delta t}(v_{\Delta t}) = Mv_{\Delta t} + B^*p_{\Delta t}
+\end{align*}
+\end{theorem}
+\begin{proof}
+Let us start with the $Mv$ term of the gradient. This term comes from the integral $\int_0^T v(t)^2dt$, which we evaluate using the trapezoid rule, which looks as the following:
+\begin{align*}
+\int_0^T v(t)^2dt \approx \Delta t\frac{v_0^2+v_N^2}{2} + \sum_{i=1}^{N-1} \Delta t v_i^2 = v^*Mv
+\end{align*} 
+The function $f(v)=\frac{1}{2} v^*Mv$ obviously has $Mv$ as gradient. The second term of the gradient comes from the second term of the functional, namely $g(v)=\frac{1}{2}(y_N -y^T)^2$. To differentiate $g$ with respect to the i'th component of $v$, we will apply the chain rule multiple times. Lets first demonstrate by calculating $\frac{\partial g}{\partial v_N}$, in a setting where we have used implicit euler to solve the equations:
+\begin{align*}
+\frac{\partial g(v)}{\partial v_N} &= \frac{\partial g(v)}{\partial y_N}\frac{\partial y_N}{\partial v_N} = (y_N -y^T)\frac{\partial y_N}{\partial v_N}\\
+&= (y_N -y^T)\frac{\Delta t}{1-\alpha\Delta t}
+\end{align*}
+To get to the second line I used the implicit Euler formula (\ref{I_state}). If we then look at the scheme (\ref{I_adjoint}) for the adjoint equation, we see that:
+\begin{align*}
+(y_N -y^T)\frac{\Delta t}{1-\alpha\Delta t} = \Delta t\frac{p_N}{1-\alpha\Delta t} = \Delta t p_{N-1}
+\end{align*} 
+Using the same approach, we can find an expression for $\frac{\partial g(v)}{\partial v_i}$: 
+\begin{align*}
+\frac{\partial g(v)}{\partial v_i} &= (y_N -y^T) (\prod_{k=i+1}^{N}\frac{\partial y_{k}}{\partial y_{k-1}}) \frac{\partial y_i}{\partial v_{i}} = \frac{p_N}{(1-\alpha\Delta t)^{N-i}}\frac{\Delta t}{1-\alpha\Delta t} \\
+&= \frac{p_N\Delta t}{(1-\alpha\Delta t)^{N-i+1}}=\Delta t p_{i-1}
+\end{align*}
+since $v_0$ is not part of the scheme, $\frac{\partial g(v)}{\partial v_0}=0$. If we now write up the gradient of $g(v)$ on matrix form, you get $\nabla g(v) = Bp$. The expression for the gradient in the case where we use the explicit Euler scheme can be found in a similar fashion. 
+\end{proof}
+\section{Taylor test}
+A good way to test whether a proposed gradient of functional actually is the correct gradient, is to use the Taylor test. The test is as its name implies connected with Taylor expansions of a function, or more precisely the following two observations:
+\begin{align*}
+|J(v+\epsilon w)-J(v)| &= O(\epsilon) \\
+|J(v+\epsilon w)-J(v)-\epsilon\nabla J(v)\cdot w| &= O(\epsilon^2)
+\end{align*}
+Here $w$ is a random direction in the same space as $v$, while $\epsilon$ is some constant. 
+\\
+\\
+The test is carried out, by evaluating $D=|J(v+\epsilon w)-J(v)-\epsilon\nabla J(v)\cdot w|$ for decreasing $\epsilon$s, and if $D$ approaches 0 at 2nd order rate, we consider the test as passed.
+\section{Verifying the numerical gradient using the Taylor test}
+I will now use the Taylor test on the numerical gradient (\ref{num_grad}) that we get when solving the following problem:
+\begin{align}
+\left\{
+     \begin{array}{lr}
+       	y'(t)=0.9y(t) +v(t), \ t \in (0,1)\\
+       	   y(0)=3.2
+     \end{array}
+   \right. 
+\end{align}
+\begin{align}
+J(y,v) = \frac{1}{2}\int_0^1v(t)^2dt + \frac{1}{2}(y(1)-1.5)^2
+\end{align}
+I then discretize in time using $\Delta t=\frac{1}{100}$, and I set $v_i=1 \ \forall i$, while $w_i$ are chosen randomly from numbers between 0 and 100. Applying the Taylor test to this problem, and setting:
+\begin{align*}
+D_1(\epsilon) &= |J(v+\epsilon w)-J(v)|\\
+D_2(\epsilon) &=|J(v+\epsilon w)-J(v)-\epsilon \nabla J(v)\cdot w|
+\end{align*} 
+yielded the following:
+\\
+ \begin{tabular}{lrrrll}
+\toprule
+{} $\epsilon$&  $D_1$ &  $D_2$ &        $||\epsilon w||_{l_{\infty}}$ &    $ \log(\frac{D_1(10\epsilon)}{D_1(\epsilon)})$ &    $ \log(\frac{D_2(10\epsilon)}{D_2(\epsilon)})$ \\
+\midrule
+1.000000e+00 &  5956.494584 &        5.244487e+03 &  99.987417 &       -- &       -- \\
+1.000000e-01 &   123.645671 &        5.244487e+01 &   9.998742 &  1.68281 &        2 \\
+1.000000e-02 &     7.644529 &        5.244487e-01 &   0.999874 &  1.20883 &        2 \\
+1.000000e-03 &     0.717253 &        5.244487e-03 &   0.099987 &  1.02768 &        2 \\
+1.000000e-04 &     0.071253 &        5.244487e-05 &   0.009999 &  1.00287 &        2 \\
+1.000000e-05 &     0.007121 &        5.244489e-07 &   0.001000 &  1.00029 &        2 \\
+1.000000e-06 &     0.000712 &        5.244760e-09 &   0.000100 &  1.00003 &  1.99998 \\
+1.000000e-07 &     0.000071 &        5.255194e-11 &   0.000010 &        1 &  1.99914 \\
+\bottomrule
+\end{tabular}
+\\
+
+\end{document}

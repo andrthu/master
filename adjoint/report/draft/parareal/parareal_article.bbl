@@ -1,0 +1,16 @@
+\begin{thebibliography}{1}
+
+\bibitem{lions2001resolution}
+Jacques-Louis Lions, Yvon Maday, and Gabriel Turinici.
+\newblock R{\'e}solution d'edp par un sch{\'e}ma en temps
+  {\guillemotleft}parar{\'e}el{\guillemotright}.
+\newblock {\em Comptes Rendus de l'Acad{\'e}mie des Sciences-Series
+  I-Mathematics}, 332(7):661--668, 2001.
+
+\bibitem{maday2002parareal}
+Yvon Maday and Gabriel Turinici.
+\newblock A parareal in time procedure for the control of partial differential
+  equations.
+\newblock {\em Comptes Rendus Mathematique}, 335(4):387--392, 2002.
+
+\end{thebibliography}

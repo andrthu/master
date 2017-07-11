@@ -1,0 +1,8 @@
+\chapter*{Abstract}
+In this thesis we propose a parallel in time method for reducible optimal control problems with differential equation constraints. Our method uses a BFGS algorithm with a Parareal-based preconditioner to optimize a series of unconstrained and time-parallelizable subproblems that depend on a penalty parameter $\mu$. For large $\mu$'s, the solution of the subproblems will approach the numerical solution of the sequential algorithm.
+\\
+\\
+We derive and implement the method for an ODE constrained example problem, and explore the consistency of the method both through theory and experiments. We present the already known  Parareal-based preconditioner and derive some of its properties. We also show that it is applicable to the BFGS optimization algorithm.
+\\
+\\
+The performance of our proposed algorithm is tested on the ODE constrained example problem using both simulated and actual parallelism. We observe that our preconditioned method seems to be independent of the number of decompositions of the time interval, and we were able to achieve modest speedup results between 9 and 23.5 on 48 to 120 cores. We also observe that our method experiences significant loss of potential speedup for large penalty parameters $\mu$.

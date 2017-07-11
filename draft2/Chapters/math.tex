@@ -1,0 +1,451 @@
+\chapter{Optimal Control with ODE Constraints} \label{math_chap}
+In this chapter we present the basic mathematical background that the rest of the thesis will be based on. The chapter covers three different subjects. The first subject is on general theory of optimal control problems with DE constraints. The second subject is on finite difference discretization of differential equations and numerical integration, and the last subject deals with optimization algorithms. In addition to the general theory, we present an example optimal control problem with ODE constraints, that will be used throughout the rest of the thesis. 
+ \section{General Optimal Control Problem}
+In this thesis we consider reducible optimization problems with time-dependent differential equation constraints. This problem is a special case of the more general optimization problem, which we will state in definition \ref{OCP_def}. Here we also define what it means for an optimization problem to be reducible, by introducing the reducibility condition (\ref{Reduce_condition}).
+\begin{definition}[Optimization with DE constraints] \label{OCP_def}
+Let $Y,V,Z$ be Banach spaces, where $Y,V$ also are reflexive. Given an objective function $J: Y\times V\rightarrow\mathbb{R}$ and an operator $E:Y\times V \rightarrow Z$, optimization with DE constraints then refers to minimization problems on the following form:
+\begin{align}
+\underset{y\in Y,v\in V}{\text{min}} \ &J(y,v), \label{OCP_DEF_J}\\
+\textrm{Subject to:} \ &E(y,v)=0. \label{OCP_DEF_E}
+\end{align}
+The differential equation $E(y,v)=0$ is called the state equation, while the variables $y$ and $v$ are respectively known as the state and the control. If the following condition holds:
+\begin{align}
+\forall v \in V, \ \exists! y \in Y \ s.t. \ E(y,v)=0, \label{Reduce_condition}
+\end{align}
+we say the the optimization problem is reducible.
+\end{definition}
+\noindent
+An alternative way of expressing the reducibility condition (\ref{Reduce_condition}), is that for all controls $v\in V$ the differential equation $E(y,v)=0$ is well posed. Optimization problems with ill posed state equations can both be solvable and interesting, but the methods introduced in this thesis are designed around reducible problems. Therefore we will from this point always assume that the optimization problems we look at are reducible. When the reducibility condition (\ref{Reduce_condition}) holds the state can be written as a function $y(v)$ implicitly defined through the state equation. Using $y(v)$ we are able to define the reduced optimization problem:
+\begin{definition}[Reduced problem] \label{DEF_RED_OCP}
+Consider the optimization problem from definition \ref{OCP_def}, and assume that reducibility condition (\ref{Reduce_condition}) holds. We can then define the reduced objective function $\hat J:V\rightarrow\mathbb{R}$ as:
+\begin{align}
+\hat J(v) = J(y(v),v). \label{ROF}
+\end{align}
+The reduced optimization problem is then defined as the unconstrained minimization problem:
+\begin{align}
+\underset{v\in V}{\text{min}} \ \hat J(v). \label{reduced problem}
+\end{align}
+\end{definition} 
+\noindent
+Problem (\ref{reduced problem}) is called the reduced problem because we have moved the differential equation constraints into the functional. By doing this, we have transformed the constrained problem (\ref{OCP_DEF_J}-\ref{OCP_DEF_E}) into an unconstrained one (\ref{reduced problem}), and we can therefore solve the reduced problem using tools from unconstrained optimization. Let us therefore briefly discuss the fundamental theory that algorithms for unconstrained optimization are based on. We start by defining what it means to be a minimizer of a functional $J: V \rightarrow \mathbb{R}$.
+\begin{definition}[Global and local minimizer]
+A point $\bar{v}\in V$ is called a global minimizer of the functional $J: V \rightarrow \mathbb{R}$, if:
+\begin{align}
+\forall v\in V \quad J(\bar{v})\leq J(v).\label{globalMin}
+\end{align}
+A point $\bar{v}\in V$ is called a local minimizer of $J$ if there exists a neighbourhood $\mathcal{N}\subset V$ of $\bar{v}$ such that:
+\begin{align}
+\forall v\in \mathcal{N} \quad J(\bar{v})\leq J(v). \label{localMin}
+\end{align}
+If the inequality of (\ref{localMin}) is strict we say that $\bar{v}$ is a strict local minimizer.
+\end{definition}
+\noindent
+Investigating whether a point $\bar v\in V$ is a local minimizer of a functional $J$ using definition (\ref{localMin}), would require us to check if $J(\bar v)\leq J(v)$ for all $v$'s in the vicinity of $\bar v$. This is not a viable strategy, and for sufficiently smooth functionals more efficient and practical ways for identifying minimizers exist. Typically, as we soon will see, we can check whether $\bar v$ is a minimum of $J$, by examining the gradient $\nabla J(\bar v)$ and the Hessian $\nabla^2 J(\bar v)$. In theorem \ref{SuffichentMinConditions} from \cite{nocedal2006numerical} we present sufficient conditions on $\nabla J(\bar v)$ and $\nabla^2 J(\bar v)$, which guarantee that $\bar v$ is a strict local minimizer of $J$, for the case when $V=\mathbb{R}^n$. Generalizations of theorem \ref{SuffichentMinConditions} for when $V$ is a reflexive Banach space will not be considered here. For further details on this topic see \cite{hinze2008optimization}.
+\begin{theorem} \label{SuffichentMinConditions}
+Let $J:\mathbb{R}^n\rightarrow\mathbb{R}$ be a functional, and assume its Hessian is twice continuously differentiable in a neighbourhood $ \mathcal{N}$ of a point $\bar v\in\mathbb{R}$. If $\nabla J(\bar v)=0$ and if $\nabla^2 J(\bar v)$ is positive definite, $\bar v$ is a strict local minimizer of $J$.
+\end{theorem}
+\begin{proof}
+See \cite{nocedal2006numerical}
+\end{proof}
+\noindent
+The conditions of theorem \ref{SuffichentMinConditions} are sufficient for $\bar v$ to be a local minima, but the condition on the Hessian of $J$ is not always necessary. In some cases, in particular when $J$ is convex, $\nabla J(\bar v)=0$ is sufficient for determining if $\bar v$ is a local minimizer. When $J$ is convex, any local minimizer $\bar v$ will additionally be a global minimizer. The foundation for unconstrained optimization algorithms is based around theorem \ref{SuffichentMinConditions}, since such algorithms always seek a point where the gradient of $J$ is zero. To be able to use tools from unconstrained optimization on problem (\ref{reduced problem}), we will therefore need a way to evaluate the gradient of the reduced objective function $\hat J$. There are several ways of doing this, but we will focus on the so called adjoint approach, which turns out to be the most computationally effective way to evaluate $\hat J'(v)$.
+\\
+\\
+Before we explain the adjoint approach to gradient evaluation, we investigate under what conditions problem (\ref{OCP_DEF_J}-\ref{OCP_DEF_E}) even have a solution. To answer this question, we will write up a result from \cite{hinze2008optimization} concerning the existence and uniqueness of solution for linear-quadratic optimization problems. This class of problems is less general than the problems from definition \ref{OCP_def}, and a more general existence result exist. To state this result however, would require the introduction of concepts from functional analysis that go beyond the scope of this thesis. In addition the example problem that we will introduce in section \ref{example_sec} belongs to the linear-quadratic class of optimization problems. 
+\begin{theorem} \label{existence}
+Assume that $H,V$ are Hilbert spaces and that $Y,Z$ are Banach spaces. Given vectors $q\in H$ and $g\in Z$, and bounded linear operators $A:Y\rightarrow Z$, $B:V\rightarrow Z$ and $Q:Y\rightarrow H$, we can define the linear-quadratic optimization problems as follows:
+\begin{align*}
+&\underset{y\in Y,v\in V}{\text{min}}J(y,v) = \frac{1}{2}||Qy-q||_H^2 + \frac{\alpha}{2}||v||_V^2, \\
+&\textrm{Subject to:} \ Ay + Bv = g.
+\end{align*}
+If $\alpha>0$, the above linear-quadratic optimization problem has a unique solution pair $(y,v)\in Y\times V$.
+\end{theorem}   
+\begin{proof}
+See \cite{hinze2008optimization}.
+\end{proof}
+\noindent 
+\subsection{Example Problem} \label{example_sec}
+To better understand the adjoint approach to gradient evaluation of the reduced objective function, we define a simple optimal control problem with ODE constraints, so that we later can derive its adjoint equation and gradient. The problem will also be used to test and verify the implementation of our method in chapter \ref{Verification chapter} and \ref{Experiments chapter}. In our example both the state $y\in C^1$ and the control $v\in C$ will be functions on an interval $[0,T]$. The specific objective function we consider is:
+\begin{align}
+J(y,v) = \frac{1}{2}\int_0^Tv(t)^2dt + \frac{\alpha}{2}(y(T)-y^T)^2 \label{exs_J}
+\end{align}
+The state equation $E(y,v)=0$ is a linear, first order equation with the control as a source term:
+\begin{align}
+\left\{
+     \begin{array}{lr}
+       	y'(t)=ay(t) + v(t) \quad \textrm{for } \ t\in(0,T),\\
+       	y(0)=y_0.
+     \end{array}
+   \right. \label{exs_E}
+\end{align}
+The state equation of our optimal control problem is uniquely solvable for all continuous controls $v$, and has solution:
+\begin{align*}
+y(t) = e^{a t}(C(y_0)+\int_0^te^{-a\tau}v(\tau)d\tau)
+\end{align*}
+This means that our example problem (\ref{exs_J}-\ref{exs_E}) is reducible. Since the state equation is linear, and since all terms in the objective function are quadratic, (\ref{exs_J}-\ref{exs_E}) is also an example of a linear-quadratic optimization problem. Theorem \ref{existence} therefore guaranties a unique minimizer of problem (\ref{exs_J}-\ref{exs_E}).
+\section{The Adjoint Equation and the Gradient} \label{adjointGrad_sec}
+The usual way of finding the minimum (or maximum) value of a function $\hat J$, is to solve the equation $\hat J'(v)=0$. Solving this equation usually requires us to be able to evaluate, or have an expression for the derivative of $\hat J$. There are different ways to evaluate the gradient of the reduced objective function $\hat J(v)$. We will here take the adjoint approach. This strategy leads to an expression for the gradient of the reduced objective function (\ref{ROF}), which we state in proposition \ref{redGrad_prop}. The reason it is called the adjoint approach, is that the gradient $\hat J'(v)$ depends on the so called adjoint equation. The definition of this equation is found in Proposition \ref{redGrad_prop}. Proposition \ref{redGrad_prop} also include conditions on the operators $J$ and $E$ from definition \ref{OCP_def}, which are necessary for the existence of the gradient of $\hat J$. These conditions involve the notion of Fr\'{e}chet differentiability, which is a generalization of directional derivatives for operators on Banach spaces. For a more precise definition of Fr\'{e}chet differentiability, we refer to \cite{hinze2008optimization}.
+\begin{proposition}[Gradient and adjoint of the reduced objective function] \label{redGrad_prop}
+Let $\hat J$ be the reduced objective function from definition \ref{DEF_RED_OCP}, and assume that the state equation operator $E$ and the objective function $J$ are Fr\'{e}chet differentiable. Assume also that the partial derivative $E_y(y,v):Y\rightarrow Z$ of $E$ with respect to $y$ is a linear and continuously invertible operator. Then the gradient of $\hat J$ with respect to the control $v$ is:
+\begin{align}
+\hat J'(v) = -E_v(y,v)^*p + J_v(y,v),\label{gradient}
+\end{align}
+where $p$ is the solution of the adjoint equation:
+\begin{align}
+E_y(y,v)^{*}p=J_y(y,v). \label{general adjoint}
+\end{align}
+\end{proposition}
+\begin{proof}
+If $J$ and $E$ are  Fr\'{e}chet differentiable and if $E_y$ is continuously invertible, the implicit function theorem ensures that $y(v)$ is continuously differentiable. For a more detailed discussion on the implicit function theorem, see \cite{hinze2008optimization}. To differentiate $\hat J(v) = J(y(v),v)$, we take the total derivative with respect to $v$ $D_v$ of the unreduced objective function:
+\begin{align*}
+\hat J'(v)=D_vJ(y(v),v) = y'(v)^*J_y(y,v) + J_v(y,v).
+\end{align*}
+The problematic term in the above expression, is $y'(v)^*$, since the function $y(v)$ is implicitly defined through $E$. We can however find an equation for $y'(v)^*$ if we take the the total derivative of the state equation with respect to $v$.
+\begin{align*}
+D_vE(y(v),v)=0 &\Rightarrow E_y(y,v)y'(v)=-E_v(y,v) \\ 
+&\Rightarrow y'(v)=-E_y(y,v)^{-1}E_v(y,v) \\ 
+&\Rightarrow y'(v)^* = -E_v(y,v)^*E_y(y,v)^{-*}.
+\end{align*}
+Instead of inserting $y'(v)^* = -E_v(y,v)^*E_y(y,v)^{-*}$ into our gradient expression, we define the adjoint equation as:
+\begin{align*}
+E_y(y,v)^{*}p=J_y(y,v). 
+\end{align*}
+This now allows us to write up the gradient as follows:
+\begin{align*}
+\hat{J}'(v)&= y'(v)^*J_y(y,v) + J_v(y,v)\\
+&=-E_v(y,v)^*E_y(y,v)^{-*}J_y(y,v) + J_v(y,v) \\
+&= -E_v(y,v)^*p +J_v(y,v). 
+\end{align*}
+\end{proof}
+\noindent
+Expression (\ref{gradient}) gives us a recipe for evaluating the reduced objective function for a control variable $v\in V$. Typically this evaluation requires us to solve both the state and adjoint equation, and then inserting the adjoint into expression (\ref{gradient}). To better illustrate how gradient evaluation works let us derive the adjoint equation and the gradient of the problem introduced in section \ref{example_sec}.
+\subsection{Adjoint of the Example Problem}
+We want to derive the gradient of problem (\ref{exs_J}-\ref{exs_E}). However, before we state the gradient, we write up and derive the adjoint equation.
+\begin{proposition} \label{adjoint_eq_prop}
+The adjoint equation of the problem (\ref{exs_J}-\ref{exs_E}) is:
+\begin{align}     
+-p'(t) &= ap(t) \label{exs_adjoint_eq}\\
+p(T) &= \alpha(y(T)-y^T)   \label{exs_adjoint_ic}  
+\end{align}
+\end{proposition}
+\begin{proof}
+From proposition \ref{redGrad_prop} we know that the adjoint equation is $E_y(y,v)^{*}p=J_y(y,v)$. To find the adjoint equation we therefore need expressions for $E_y(y,v)^{*}$ and $J_y(y,v)$. In the derivation of these terms we will use the weak formulation of the state equation (\ref{exs_E}). Let $(\cdot,\cdot)$ be the $L^2$ inner product over $(0,T)$, and then define the operator $\delta_{\tau}$ to represent function evaluation at time $t=\tau$ in a $L^2$-inner product setting. We can then write up the weak formulation of the state equation (\ref{exs_E}) by multiplying it with a test function $\phi(t)$, integrating the result over $(0,T)$ and then moving the derivative from $y$ to $\phi$ by doing partial integration. The weak formulation of the state equation is then:
+\begin{gather*}
+\textrm{Find $y \in L^2(0,T)$ such that}\\
+\mathcal{E}[y,\phi]= (y,-(\frac{\partial}{\partial t}+a- \delta_T)\phi) -(y_0\delta_0+v,\phi)=0\quad	 \forall \ \phi \in C^{\infty}((0,T)).
+\end{gather*}
+Instead of finding $E_y$, we will linearise and adjoint $\mathcal{E}$. We can then derive the weak formulation of the adjoint equation and use this to reconstruct the strong formulation. We linearise $\mathcal{E}$ by differentiating it with respect to $y$. This yields:
+\begin{align*}
+\mathcal{E}_y[\cdot,\phi]=(\cdot,(-\frac{\partial}{\partial t} - a + \delta_T)\phi).
+\end{align*}
+To find the adjoint of $\mathcal{E}_y$, we need to find a bilinear form $\mathcal{E}_y^*$, such that $\forall v,w\in L^2(0,T)$ the following holds:
+\begin{align*}
+\mathcal{E}_y[v,w]=\mathcal{E}_y^*[w,v].
+\end{align*}
+We achieve this through partial integration:
+\begin{align*}
+\mathcal{E}_y[v,w] &=(v,(-\frac{\partial}{\partial t} - a + \delta_T)w) = \int_0^T-v(t)(w'(t)+aw(t))dt + v(T)w(T) \\
+&=\int_0^Tw(t)(v'(t)-a v(t))dt+v(0)w(0) \\
+&= (w,(\frac{\partial}{\partial t} - a+\delta_0)v)
+=:\mathcal{E}_y^*[w,v].
+\end{align*}
+We now have the left hand side of the adjoint equation. We get the right hand side by differentiating the objective function:
+\begin{align*}
+J_y(y,v) & = \frac{\partial}{\partial y} (\frac{1}{2}\int_0^Tv^2dt + \frac{\alpha}{2}(y(T)-y^T)^2) \\ 
+&= \alpha\delta_T(y(T)-y^T).
+\end{align*}
+The weak formulation of the adjoint equation then is: Find $p$ such that $\mathcal{E}_y^*[p,\psi]=(J_y(y,v),\psi)$, $\forall\psi\in C^{\infty}((0,T))$. Writing out $\mathcal{E}_y^*[p,\psi]=(J_y(y,v),\psi)$ yields:
+\begin{align*}
+&\int_0^Tp(t)\psi'(t)-a p(t)\psi(t)dt + p(0)\psi(0)= \alpha(y(T)-y^T)\psi(T)
+\end{align*}
+If we then do partial integration, the equation reads: Find $p$ such that:
+\begin{align*}
+&\int_0^T(-p'(t)-ap(t))\psi(t)dt +p(T)\psi(T)= \alpha(y(T)-y^T)\psi(T)\ \quad\forall \ \psi \in C^{\infty}((0,T))
+\end{align*}
+Since we can vary $\psi$ arbitrarily, we get the strong formulation:
+ \begin{align*}
+   \left\{
+     \begin{array}{lr}
+       -p'(t) = ap(t) \\
+       p(T) = \alpha( y(T)-y^T)
+     \end{array}
+   \right.
+\end{align*}
+\end{proof}
+\noindent
+With the adjoint we can find the gradient of $\hat{J}$. Let us state the result first.
+\begin{proposition}
+The gradient of the reduced objective function $\hat{J}$ with respect to v is
+\begin{align}
+\hat{J}'(v)=v+p. \label{exsample_grad}
+\end{align} 
+\end{proposition}
+\begin{proof}
+Expression (\ref{gradient}) in proposition \ref{redGrad_prop} states that the gradient of the reduced objective function is $\hat J'(v) = -E_v(y,v)^*p + J_v(y,v)$. To find the gradient of our example problem we therefore need formulas for $E_v(y,v)$ and $J_v(y,v)$. These terms can be shown to be:
+\begin{align*}
+J_v(y,v) &= v \\
+\mathcal{E}_v[\cdot,\phi] &= -(\cdot,\phi).
+\end{align*}
+Here $\mathcal{E}$ is the bilinear form defined in the proof of proposition \ref{adjoint_eq_prop}. Since $\mathcal{E}_v[\cdot,\phi]$ is symmetric, $\mathcal{E}_v^*=\mathcal{E}_v$, and its strong formulation is $E_v(y,v)^*=-1$. By inserting relevant terms into (\ref{gradient}), we get the gradient:
+\begin{align}
+\hat{J}'(v)&=-E_v(y,v)^*p + J_v(y,v) \\
+&= p+v. \label{exs_grad}
+\end{align} 
+\end{proof}
+\noindent
+Evaluating the gradient of our example problem can now be boiled down to the following three steps:
+\begin{align*}
+1.\quad & \textrm{Solve the state equation (\ref{exs_E}) for $y$. }\\
+2.\quad & \textrm{Use $y$ to solve the adjoint equation (\ref{exs_adjoint_eq}) for $p$. }\\
+3.\quad & \textrm{Insert $p$ and control $v$ into gradient formula (\ref{exsample_grad}).}
+\end{align*}
+To see why the above procedure is computationally effective, let us compare it with the finite difference approach to evaluating the gradient. Using finite difference we can find an approximation of the directional derivative $(\hat J'(v),h)_V$ in direction $h\in V$, by choosing a small $\epsilon>0$ and setting:
+\begin{align}
+(\hat J'(v), h)_V\approx\frac{\hat J(v+\epsilon h)-\hat J(v)}{\epsilon} \label{FD_approach}
+\end{align} 
+To calculate the above expression, we need to evaluate the objective function at $v+\epsilon h$ and $v$. Since objective function evaluation requires the solution of the state equation, finding the directional derivative of $\hat J$ in a direction $h$ involves solving two ODEs. We are however interested in the gradient of $\hat J$, not its directional derivatives. To find $\hat J'(v)$ we calculate (\ref{FD_approach}) for all unit vectors in $V$. This assumes that $V$ is a finite space, which is always true in the discrete case. If we now look at the discrete case and assume that $V=\mathbb{R}^n$ we can write up a recipe for finding $\hat J'(v)$ using finite difference. Let $e_i$ denote the i-th unit vector of $\mathbb{R}^n$. $\hat J'(v)$ can then be found in the following way:
+\begin{align*}
+1.\quad & \textrm{Evaluate $\hat J(v)$.}\\
+2.\quad & \textrm{Evaluate $\hat J(v+\epsilon e_i)$ for $i=1,...,n$. }\\
+3.\quad & \textrm{Set the i-th component of $\hat J'(v)$ to be $\frac{\hat J(v+\epsilon e_i)-\hat J(v)}{\epsilon}$.}
+\end{align*}
+To execute the above steps, we need to solve the state equation for $n+1$ different control variables. In comparison finding $\hat J'(v)$ using the adjoint approach only requires us to solve the state and adjoint equations once, independently of the dimension of $V$. For finite difference the computational cost of one gradient evaluation therefore depends linearly on the number of components in the control variable $v$, while the computational cost of the adjoint approach is independent of the size of $v$. In addition, since the the adjoint of the linearised state equation is linear, the adjoint equation is linear. This means that the adjoint equation often is computationally cheaper to solve than the state equation, especially if the state equation is non-linear. 
+\subsection{Exact Solution of the Example Problem} \label{exact_sec}
+It turns out that we can find the exact solution of problem (\ref{exs_J}-\ref{exs_J}) by utilizing the adjoint equation (\ref{exs_adjoint_eq}-\ref{exs_adjoint_ic}) and the gradient of the reduced objective function (\ref{exs_grad}). Finding an exact solution to our example problem will be useful in chapter \ref{Verification chapter} and \ref{Experiments chapter}, where we will be testing and verifying different aspects of our algorithm. The derivation of the solution is based on two key observations. The first observation is a relation between the optimal control $\bar v$ and the adjoint $p$, which is a result from the fact that $\hat J'(\bar v)=0$ is a necessary condition for $\bar v$ being a minimizer of $\hat J$. Inserting expression (\ref{exs_grad}) into $\hat J'(\bar v)=0$ yields:
+\begin{align}
+\bar v(t)=-p(t). \label{obs1}
+\end{align} 
+The second observation concerns the solution of the adjoint equation (\ref{exs_adjoint_eq}-\ref{exs_adjoint_ic}). Given a state $y(t)$, the solution of the adjoint equation is:
+\begin{align}
+p(t) = \alpha(y(T)-y^T)e^{a(T-t)} = \omega e^{-at}. \label{obs2}
+\end{align}
+Combining observation (\ref{obs1}) with observation (\ref{obs2}) suggests that a minimizer $\bar v$ of $\hat J$ should be on the form:
+\begin{align}
+\bar v(t) = C_0 e^{-at}. \label{v_ansatz}
+\end{align}
+It turns out that plugging anstatz (\ref{v_ansatz}) into the state equation, and then using the resulting state to solve the adjoint equation makes us able to find the solution of our example problem. The solution is stated in proposition \ref{exact_prop} followed by its derivation.
+\begin{proposition} \label{exact_prop}
+Assume $a\neq0$ and $\alpha>0$. Then the solution of optimal control problem (\ref{exs_J}-\ref{exs_J}) is:
+\begin{align}
+\bar v(t) = \alpha\frac{e^{aT}(y^T-e^{aT}y_0)}{1+\frac{\alpha e^{aT}}{2a}(e^{aT}-e^{-aT})}e^{-at}
+\end{align}
+\end{proposition}
+\begin{proof}
+We start the proof by writing up the state equation (\ref{exs_E}) with (\ref{v_ansatz}) as source term:  
+\begin{align*}
+\left\{
+     \begin{array}{lr}
+       	y'(t)=ay(t) + C_0 e^{-at}\quad \textrm{for } \ t\in(0,T),\\
+       	y(0)=y_0.
+     \end{array}
+   \right. 
+\end{align*}
+This is a first order linear ODE with solution:
+\begin{align}
+y(t) = y_0e^{at} +\frac{C_0}{2a}(e^{at}-e^{-at}) \label{C_state}
+\end{align}
+If we insert the state (\ref{C_state}) into the formula for the adjoint (\ref{obs2}), we can express the adjoint $p(t)$ in terms of the constant $C_0$:
+\begin{align}
+p(t) &=  \alpha(y(T)-y^T)e^{a(T-t)} \\
+&= \alpha e^{aT}(y_0e^{aT} +\frac{C_0}{2a}(e^{aT}-e^{-aT})-y^T)e^{-at} \label{C_adjoint}
+\end{align}
+The last step is to plug $v(t) =C_0 e^{-at}$ and $p(t)$ from (\ref{C_adjoint}) into observation (\ref{obs1}) and then solve for $C_0$:
+\begin{align*}
+v(t)=-p(t) &\iff C_0 e^{-at} = -\alpha e^{aT}(y_0e^{aT} +\frac{C_0}{2a}(e^{aT}-e^{-aT})-y^T)e^{-at}\\
+&\iff C_0(1+\frac{\alpha e^{aT}}{2a}(e^{aT}-e^{-aT})) = \alpha e^{aT}(y^T-y_0e^{aT}) \\
+&\iff C_0 = \alpha\frac{e^{aT}(y^T-e^{aT}y_0)}{1+\frac{\alpha e^{aT}}{2a}(e^{aT}-e^{-aT})}
+\end{align*}
+Division by $(1+\frac{\alpha e^{aT}}{2a}(e^{aT}-e^{-aT}))$ is always allowed, since $\frac{1}{a}(e^{aT}-e^{-aT})>0, \forall a\neq0$ and $\forall T>0$. 
+\end{proof} 
+\section{Numerical Solution}
+To be able to solve optimal control problems numerically, we need to discretize the objective function and the state and adjoint equations. We are mainly interested in time-dependent equations, and one way of discretizing ODEs or PDEs in temporal direction, is to use a finite difference method. Since the objective function includes an integral term, we also need methods for numerical integration. In this section we will only look at first order equations on the following form:
+\begin{align}
+\left\{
+     \begin{array}{lr}
+	\frac{\partial}{\partial t} y(t) = F(y(t),t),\quad t\in I=[0,T] \\
+	y(0)=y_0 
+	\end{array}
+\right.\label{general_1st_ODE}
+\end{align}
+Both the state and adjoint equation of our example problem can be formulated as an equation on form (\ref{general_1st_ODE}), and understanding the numerics of (\ref{general_1st_ODE}) is therefore sufficient for the purposes of this thesis. Before we introduce numerical methods for solving ODEs and evaluating integrals, we need to explain how we discretize the time domain $I=[0,T]$. We do this by dividing $I$ into $n$ parts of length $\Delta t=\frac{T}{n}$, and then setting $t_k=k\Delta t$. This gives us a sequence $I_{\Delta t}=\{t_k\}_{k=0}^{n}$ as a discrete representation of the interval $I$. Numerically solving a differential equation for $y$ on $I_{\Delta t}$ means that we try to find $y(t_k)$ for $k=0,...,n+1$. For the rest of this section we let the notation $y_k$ denote evaluating the function $y$ at time $t_k$.
+\subsection{Discretizing ODEs Using Finite Difference} \label{FD_sub_sec}
+Finite difference is a tool for approximating derivatives of functions. When we have a discretized domain $I_{\Delta t}$ with time step $\Delta t$, the derivative of a function $y$ at point $t_k$ is approximated by:
+\begin{align}
+\frac{\partial}{\partial t} y(t_k) \approx \frac{y_k-y_{k-1}}{\Delta t}. \label{FD_diff_approx}
+\end{align}
+By exploiting approximation (\ref{FD_diff_approx}) we can create methods for solving ODEs. This is done by relating $y_k$ to neighbouring values $y_j$, $j\neq k$ through the ODE. The most simplistic examples of such finite difference methods are the explicit and implicit Euler methods. We write up these methods applied to (\ref{general_1st_ODE}) in definition \ref{Euler_def} below.
+\begin{definition} \label{Euler_def}
+Explicit Euler applied to equation (\ref{general_1st_ODE}) means that for $k=1,...,n$ the value of $y_k$ is determined by the following formula:
+\begin{align}
+y_k = y_{k-1} +\Delta tF(y_{k-1},t_{k-1}).\label{EE_formula}
+\end{align} 
+If one instead uses implicit Euler the expression for $y_k$ is:
+\begin{align}
+y_k = y_{k-1} +\Delta tF(y_{k},t_{k}). \label{IE_formula}
+\end{align}
+\end{definition}
+\noindent
+By looking at expression (\ref{EE_formula}) and (\ref{IE_formula}) we see the origin of the names of the Euler methods. In the formula for implicit Euler, $y_k$ appears on both sides of the equal sign, and is therefore implicitly defined. For the explicit Euler scheme $y_k$ only appears on the left-hand side of expression (\ref{EE_formula}), which means $y_k$ is defined explicitly, and hence the name explicit Euler. Another thing to notice about the finite difference schemes in definition \ref{Euler_def}, is that they solve the equation forwardly. This means that given $y$ at time $t_K$, we can use (\ref{EE_formula}) and (\ref{IE_formula}) to find $y_j$ for $j>K$. The adjoint equation of optimal control problem with time-dependent DE constraints is however solved backwards in time. We therefore need finite difference schemes for solving ODEs backwards. This is easily achieved by rearranging expression (\ref{EE_formula}) and (\ref{IE_formula}) in definition \ref{Euler_def}. A backwards solving explicit Euler scheme is found by adjusting the forward solving implicit Euler scheme, while a backwards implicit Euler method is derived by rearranging the forward explicit Euler formula. These modified backwards solving schemes are written up in definition \ref{Euler_adjoint_def}. 
+\begin{definition} \label{Euler_adjoint_def}
+An explicit Euler finite difference scheme for equation (\ref{general_1st_ODE}) with initial condition at $t=T$ instead of $t=0$ yields the following formula for $y_k$:
+\begin{align}
+y_k = y_{k+1} -\Delta tF(y_{k-1},t_{k-1}).\label{EE_adjoint_formula}
+\end{align} 
+If one instead uses implicit Euler the expression for $y_k$ is:
+\begin{align}
+y_k = y_{k+1} -\Delta tF(y_{k},t_{k}). \label{IE_adjoint_formula}
+\end{align}
+\end{definition}
+\noindent
+We say that both the explicit and implicit Euler methods have an accuracy of order one. To explain what we mean by this, let us assume that we know that the function $\hat y$ solves equation (\ref{general_1st_ODE}) for a given $F$, and that $\hat y$ is sufficiently smooth. If we then use method (\ref{EE_formula}) or (\ref{IE_formula}) with some $\Delta t$ to solve (\ref{general_1st_ODE}) numerically, there exists a constant $C$ such that the  following error bound between $\hat{y}$ and numerical solution $y$ holds:
+\begin{align}
+\max_{k=0,...,n}|y_k-\hat y(t_k)|\leq C\Delta t \label{E_error_bound}
+\end{align}
+A more accurate but still simple alternative to the explicit and implicit Euler finite difference methods, is the so called Crank-Nicolson method\cite{crank1947practical}. We write up this method in a definition:
+\begin{definition}
+The Crank-Nicolson finite difference scheme applied to equation (\ref{general_1st_ODE}) produces the following formula for $y_k$:
+\begin{align}
+y_k = y_{k-1} +\frac{\Delta t}{2}(F(y_{k},t_{k})+F(y_{k-1},t_{k-1})). \label{CN_formula}
+\end{align}
+In a setting where we are solving (\ref{general_1st_ODE}) backwards in time, the expression for $y_k$ is changed to: 
+\begin{align}
+y_k = y_{k+1} -\frac{\Delta t}{2}(F(y_{k},t_{k})+F(y_{k-1},t_{k-1})). \label{CN_adjoint_formula}
+\end{align}
+\end{definition}
+\noindent
+When comparing (\ref{CN_formula}) with (\ref{EE_formula}) and (\ref{IE_formula}) we notice that the formula for $y_k$ in the Crank-Nicolson method is simply the average between the formulas for $y_k$ in the explicit and implicit Euler methods. We improve the accuracy by one order, that is quadratic convergence order, if we use Crank-Nicolson instead of the Euler methods. This means that the bound stated in (\ref{E_error_bound}) is improved to:
+\begin{align}
+\max_{k=0,...,n}|y_k-\hat y(t_k)|\leq C\Delta t^2 \label{CN_error_bound}
+\end{align}
+Other more accurate finite difference schemes exist, in particular Runge-Kutta methods, but in this thesis we restrict the usage of finite difference methods to the ones presented in this section. 
+\subsection{Numerical Integration} \label{num_int_sub_sec}
+In this subsection we present three simple methods for numerical integration. We need such methods since the objective function in our example problem (\ref{exs_J}) includes an integral. The methods that we present in definition \ref{num_int_def} are called the left-hand rectangle rule, the right-hand rectangle rule and the trapezoid rule. Their names stem from the geometrical objects used to estimate the area under the function we want to integrate.
+\begin{definition} \label{num_int_def}
+We want to estimate the integral $S=\int_0^T v(t) dt$ numerically with a discretized time domain $I_{\Delta t}=\{t_k\}_{k=0}^{n}$. The left-hand rectangle rule approximates $S$ using the following formula:
+\begin{align}
+S_l = \Delta t\sum_{k=0}^{n-1} v_k \label{LH_INT}
+\end{align}
+A slightly different approach to estimating $S$ is the right-hand rectangle rule, defined by a formula similar to (\ref{LH_INT}): 
+\begin{align}
+S_r = \Delta t\sum_{k=1}^{n} v_k \label{RH_INT}
+\end{align}
+A third way of approximating $S$ is the trapezoid rule:
+\begin{align}
+S_{trap} = \Delta t\frac{v_0+v_n}{2}+\Delta t\sum_{k=1}^{n-1} v_k \label{TRAP_INT}
+\end{align}
+\end{definition}
+\noindent
+The rectangle methods in definition \ref{num_int_def} are of accuracy order one, while the trapezoid rule is of second order. It turns out that the above presented numerical methods are analogue to the three finite difference schemes stated in section \ref{FD_sub_sec}. The left- and right-hand rectangle methods are related to the explicit and implicit Euler schemes, while the trapezoid rule is connected with Crank-Nicolson. When making numerical solvers for optimal control problems it therefore makes sense to discretize the differential equation and integral evaluation using methods of the same convergence order. 
+\section{Optimization Algorithms} \label{optiSec}
+Deriving and solving the adjoint equation gives us a way of evaluating the gradient of optimal control problems with ODE constraints. With the gradient we can solve optimal control problems numerically by using an optimization algorithm. There exists many different optimization algorithms, but here we will only look at line search methods that are useful to us in this thesis. The methods we present are the steepest descent method and the related BFGS and L-BFGS methods.  
+\subsection{Line Search Methods and Steepest Descent}
+Line search methods are algorithms used to solve problems of the type: 
+\begin{align*}
+\min_x f(x), \ f:\mathbb{R}^n\longrightarrow\mathbb{R}
+\end{align*}
+All line search methods are iterative methods that starts at an initial guess $x^0$ and generate a sequence $\{x^k\}$ that hopefully will converge to a solution. The k-th iteration in the algorithm can be described in the following way:
+\begin{align*}
+1.\quad&\textit{Choose downhill direction $p_k\in\mathbb{R}^n$} \\
+2.\quad&\textit{Choose step length $\alpha_k\in\mathbb{R}$} \\
+3.\quad&\textit{Set $x^{k+1}=x^k + \alpha_kp_k$} 
+\end{align*}
+If $f$ is differentiable, a necessary condition for a point $x^*\in\mathbb{R}^n$ to be a minimizer of $f$, is that $\nabla f(x^*)=0$. This optimality condition is used to create a stopping criteria for line search methods in the following way: Given a tolerance $\tau>0$ and a norm $||\cdot||$ stop the line search iteration when
+\begin{align}
+||\nabla f(x^k)||<\tau. \label{opti_con}
+\end{align}
+We summarize line search methods in algorithm \ref{SEQ_ALG}, which can be used to solve unconstrained optimization problems like the reduced optimal control problem (\ref{reduced problem}). When we in later chapters introduce parallel methods for solving reducible optimization problems, we will use algorithm \ref{SEQ_ALG} to measure the performance of these methods. 
+\\
+\begin{algorithm}[H] 
+\KwData{Choose an initial guess $x^0$ and a tolerance $\tau$}
+\While{$||\nabla f(x^k)||\geq \tau$ }{
+$x^{k+1} \leftarrow x^k - \alpha_k p_k $\;
+}
+\caption{The line search method\label{SEQ_ALG}}
+\end{algorithm}
+\noindent
+\\ 
+To apply algorithm \ref{SEQ_ALG}, we of course need strategies for obtaining good search directions $p_k$ and step lengths $\alpha_k$. How one chooses $p_k$ and $\alpha_k$ is what separates different line search methods. Let us start with how to choose a good step length. There are several ways of doing this, but for our purposes the so called Wolfe conditions will suffice. The Wolfe conditions consists of two conditions on $f$, presented below:
+\begin{align}
+f(x^k + \alpha_kp_k)&\leq f(x^k) + c_1\alpha_k\nabla f(x^k)\cdot p_k \label{wolf1}\\
+\nabla f(x^k + \alpha_kp_k) \cdot p_k &\geq c_2 \nabla f(x^k)\cdot p_k\label{wolf2}
+\end{align}
+Here we use constants $0<c_1<c_2<1$. The first Wolfe condition ensures that the decrease in function value of one steepest descent iteration is proportional to both step length and direction. The second condition is that the gradient of $f$ at $x^k + \alpha_kp_k$, should be less steep than at $x^k$, and therefore closer to fulfilling the optimality condition (\ref{opti_con}). If we can find a step length that satisfies these conditions we will use it. How to actually find a step length that satisfies the Wolfe conditions is quite involved, and we will therefore not go into this topic any further. For more information on the Wolfe conditions, see: \cite{wolfe1969convergence, wolfe1971convergence}. We now look into a couple of line search methods that will be used later in the thesis, starting with steepest descent.
+\\
+\\
+The steepest descent method is a very simple line search method, where the step length $p_k$ is set to the negative gradient direction at point $x^k$, i.e $p_k = -\nabla f(x^k)$. This gives us the following update for each iteration:
+\begin{align}
+x^{k+1} = x^k - \alpha_k \nabla f(x^k) \label{SD_itr}
+\end{align} 
+The problem with steepest descent is that it converges quite slowly. To understand why let us first write up a definition that characterizes convergence rates.
+\begin{definition} \label{convergence_def}
+We say that a sequence $\{x^k\}$ converges linearly to a limit $L$, if there exists $\epsilon\in(0,1)$ such that
+\begin{align*}
+\lim_{k\rightarrow\infty}\frac{||x^{k+1}-L||}{||x^k-L||} =\epsilon.
+\end{align*} 
+If $\epsilon=0$ we say that $\{x^k\}$ converges superlinearly to $L$, while $\epsilon=1$ is characterized as sublinear convergence. Lastly we say that $\{x^k\}$ converges quadratically towards $L$, if
+\begin{align*}
+\lim_{k\rightarrow\infty}\frac{||x^{k+1}-L||}{||x^k-L||^2} =\epsilon.
+\end{align*}
+\end{definition}
+\noindent
+With definition \ref{convergence_def} in mind let us state a theorem from \cite{nocedal2006numerical} that specifies the convergence rate of the steepest descent method.
+\begin{theorem}
+\label{SD_con}
+Assume that $f:\mathbb{R}^n\longrightarrow\mathbb{R}$ is twice continuously differentiable, that the steepest decent method converge to a point $x^*$, and that the Hessian of $f$ at this point, $\nabla^2 f(x^*)$ is positive definite. Then the following holds:
+\begin{align*}
+f(x^{k+1})-f(x^*) \leq (\frac{\lambda_n-\lambda_1}{\lambda_n+\lambda_1})^2 (f(x^{k})-f(x^*))
+\end{align*}  
+Here $\lambda_1\leq\cdots\leq \lambda_n$ denotes the eigenvalues of $\nabla^2 f(x^*)$.
+\end{theorem}   
+\begin{proof}
+See \cite{nocedal2006numerical}.
+\end{proof}
+\noindent
+The bound for $f(x^{k+1})-f(x^*)$ given in theorem \ref{SD_con} corresponds to a linear convergence with $\epsilon=(\frac{\lambda_n-\lambda_1}{\lambda_n+\lambda_1})^2$. For badly conditioned Hessians $\nabla^2 f(x^*)$, meaning $\lambda_n>>\lambda_1$, $\epsilon$ will approach one, and the convergence rate becomes almost sublinear. In general the linear convergence rate of steepest descent is considered poor, and we need improved algorithms to get faster convergence.
+\subsection{BFGS and L-BFGS}
+Since steepest descent has slow convergence, one usually uses faster line search methods to solve numerical optimization problems. One alternative is Newtons method. In Newtons method the search direction $p_k$ is found by multiplying the inverse Hessian with the the negative gradient at $x^k$. This results in the following iteration:
+\begin{align}
+x^{k+1} = x^k - \nabla^2 f(x^k)^{-1}\nabla f(x^k) \label{Newton}
+\end{align}
+As we will see in theorem \ref{Newton_con}, the convergence of the Newton method relies on quite strict conditions on the Hessian $\nabla^2 f(x^k)$, which are not always satisfied. An alternative to the Newton method is so called quasi-Newton methods. Instead of applying $\nabla^2 f(x^k)^{-1}$ to the negative gradient direction, such methods apply approximations of the inverse Hessian to $-\nabla f(x^k)$. The approximate Hessians are constructed for each $x^k$, using information from previous iterates. One well known quasi-Newton method is the BFGS method\cite{broyden1970convergence, fletcher1970new, goldfarb1970family, shanno1970conditioning}. In BFGS the inverse Hessian approximation is calculated by the following recursive formula:
+\begin{align}
+H^{k+1} &= (\mathbbold{1}-\rho_kS_k\cdot Y_k)H^k(\mathbbold{1} -\rho_kY_k\cdot S_k) + S_k\cdot S_k, \label{inv_H_apr} \\
+S_k &= x^{k+1}-x^{k}, \\
+Y_k &= \nabla f(x^{k+1})-\nabla f(x^{k}),\\
+\rho_k &= \frac{1}{Y_k\cdot S_k}, \\
+H^0&=\beta\mathbbold{1}.
+\end{align}
+The above formula is designed in such a way, that $H^k$ is symmetric positive definite. This gives us a requirement for the initial inverted Hessian approximation $H^0$, namely that it also needs to be symmetric positive definite. The usual choice however, is just identity or a multiple $\beta$ of the identity, where the multiple reflects the scaling of the variables. Strategies of how to chose a scaling factor $\beta$ is detailed in \cite{liu1989limited} and  \cite{gilbert1989some}. Each line search iteration for BFGS looks like:
+\begin{align}
+x^{k+1} = x^k - \alpha H^{k}\nabla f(x^k) \label{BFGS_itr}
+\end{align} 
+In the BFGS method information from all previous iterations is used to create the inverse Hessian approximation for the new iteration. An alternative to this is to limit the number of iterations the recursive formula remembers to only the latest iterations. This variation of the BFGS method is called L-BFGS\cite{nocedal1980updating}. The length of the memory need to be chosen in advance, and the typical choice is 10. Two advantages L-BFGS has over BFGS is firstly that it requires less memory storage than BFGS. The second advantage is that limiting the memory of the inverse Hessian approximation accelerates the convergence of BFGS. This is demonstrated in \cite{liu1989limited} for several different optimization problems. The reason for the improved convergence, is that more recent iterates possess more relevant information for the current Hessian, and by emphasizing the more relevant information, we improve the approximation of the Hessian.
+\subsubsection{Convergence results for Newton and quasi-Newton methods}
+Both Newton and quasi-Newton methods converge faster than the steepest descent method. To show this we will include a couple of theorems from \cite{nocedal2006numerical}
+concerning this topic. We start with a result on the convergence rate of Newtons method.
+\begin{theorem}
+\label{Newton_con}
+Suppose $f:\mathbb{R}^n\rightarrow\mathbb{R}$ is twice continuously differentiable, and that the Hessian $\nabla^2 f(x)$ is Lipschitz continuous in the neighbourhood of a solution $x^*$ that satisfies $\nabla f(x^*)=0$ and that $\nabla^2 f(x^*)$ is positive definite. Then the following holds for the Newton iteration \ref{Newton}:
+\begin{align*}
+1.\quad&\textrm{If $x^0$ is suffichently close to $x^*$, the sequence of iterates converge to $x^*$.}\\
+2.\quad&\textrm{The rate of convergence of $\{x^k\}$ is quadratic}\\
+3.\quad&\textrm{The sequence of gradient norms $ \{||\nabla f(x^k)||\}$ converges towards zero quadratically}
+\end{align*}
+\end{theorem}
+\begin{proof}
+See \cite{nocedal2006numerical}.
+\end{proof}
+\noindent
+The quadratic convergence of the Newton iteration is a big improvement in comparison with steepest descent, however theorem \ref{Newton_con} also highlights one of the problems with the method. Since we need to invert $\nabla^2 f(x^k)$ to find the search direction at $x^k$, we need an initial $x^0$ sufficiently close to the actual solution for the iteration to even work. This problem does not arise in BFGS and L-BFGS, since the Hessian approximation is designed to be invertible. Unfortunately though, these quasi-Newton methods does not have the convergence properties of Newtons method, as the next result shows.
+\begin{theorem}
+Assume $f:\mathbb{R}^n\rightarrow\mathbb{R}$ is three times differentiable. Consider then the quasi-Newton iteration $x^{k+1}=x^k-\alpha_k B_k^{-1}\nabla f(x^k)$, where $B_k$ is an approximation of the Hessian along the search direction $p_k=-B_k^{-1}\nabla f(x^k)$, satisfying the condition:
+\begin{align*}
+\lim_{K\rightarrow\infty}\frac{||(B_k-\nabla^2f(x^k))p_k||}{||p_k||}=0
+\end{align*}
+If the sequence $\{x^k\}$ originating from the quasi-Newton iteration converges to a point $x^*$, where $\nabla f(x^*)=0$ and $\nabla^2 f(x^*)$ is positive definite, the convergence is superlinear. 
+\end{theorem} 
+\begin{proof}
+See \cite{nocedal2006numerical}.
+\end{proof}
+\noindent
+Even though quasi-Newton methods do not posses the quadratic convergence of the Newton method, superlinear convergence is still better than the linear convergence of steepest descent. 

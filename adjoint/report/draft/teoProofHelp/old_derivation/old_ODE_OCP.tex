@@ -1,0 +1,234 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+ 
+\usepackage{cite}
+
+
+\newtheorem{theorem}{Theorem}
+
+\usepackage{listings}
+\usepackage{color} %red, green, blue, yellow, cyan, magenta, black, white
+\definecolor{mygreen}{RGB}{28,172,0} % color values Red, Green, Blue
+\definecolor{mylilas}{RGB}{170,55,241}
+
+
+\usepackage{graphicx}
+
+
+
+
+\begin{document}
+\section{Optimal control with ODE constraints}
+Lets try to derive the adjoint equation and the gradient, when we let $E(y,u)$ be the following ODE:
+\begin{align*}
+\left\{
+     \begin{array}{lr}
+       	y'(t)=\alpha y(t) +u(t), \ t \in (0,T)\\
+       	   y(0)=y_0
+     \end{array}
+   \right.
+\end{align*}
+We also choose the functional to be
+\begin{align*}
+J(y,u) = \frac{1}{2}\int_0^Tu(t)^2dt + \frac{1}{2}(y(T)-y^T)^2
+\end{align*}
+Before we calculate the different terms in the gradient, we want to fit our ODE into an expression $E$. we do this by "moving" the initial condition into the equation:
+\begin{align*}
+E(y,u) = y'-\alpha y - u + \delta_0(y-y_0)
+\end{align*}
+Here the $\delta_0$ means evaluation at $0$. Now  lets find $E_u$, $E_y$, $ \langle J_u(u),s\rangle$ and $J_y$ with respect to our $E$ and $J$.
+\begin{align*}
+E_u(y(u),u)&=-1 \\
+E_y(y(u),u)&=\frac{\partial}{\partial t} - \alpha + \delta_0 \ \text{,where $\delta_0$ is evaluation at 0} \\
+\langle J_u(u),s\rangle &= \int_0^T u(t)s(t) dt 
+\end{align*}
+Lets be more thorough with $J_y$, which is the right hand side in the adjoint equation.
+\begin{align*}
+J_y(y(u),u) &= \frac{\partial}{\partial y}(\frac{1}{2}\int_0^Tu^2dt + \frac{1}{2}(y(T)-y^T)^2) \\ &= \frac{\partial}{\partial y} \frac{1}{2}(y(T)-y^T)^2 \\
+&= \frac{\partial}{\partial y}\frac{1}{2}(\int_0^T \delta_T(y-y^T)dt)^2 \\
+&= \delta_T\int_0^T \delta_T(y(t)-y^T)dt \\
+&= \delta_T(y(T)-y^T)=L
+\end{align*}
+We have $E_y(y(u),u)=\frac{\partial}{\partial t} - \alpha + \delta_0$, but for the adjoint equation we need to find $E_y^*$.
+To derive the adjoint of $E_y$, we will apply it to a function $v$ and then take the $L^2$ inner product with another function $w$. The next step is then to try to "move" the operator $E_y$ from $v$ to $w$. As becomes clear below, partial integration is the main trick to achieve this: 
+\begin{align*}
+\langle E_yv,w \rangle &=  \int_0^T(v'(t)-\alpha v(t)+\delta_0v(t))w(t)dt \\ &= \int_0^Tv'(t)w(t)dt -\alpha\int_0^Tv(t)w(t) dt +v(0)w(0) \\
+& = -\int_0^Tv(t)w'(t)dt +v(t)w(t)|_0^T-\alpha\langle v,w\rangle +v(0)w(0) \\
+&=-\int_0^Tv(t)w'(t)dt -\alpha\langle v,w\rangle +v(T)w(T) \\
+&= \langle v,Pw \rangle
+\end{align*} 
+Where $P=-\frac{\partial}{\partial t} -\alpha + \delta_T$. This means that $E_y^* = P$, and we now have the left hand side in the adjoint equation. The right hand side is $J_y(y(u),u)=L$, which we have already found. If we write the  adjoint equation on variational form it will look like this: $\langle Pp,w\rangle = \langle L,w\rangle$. To get back to standard ODE form, we can do some manipulation: 
+\begin{align*}
+\langle -p'-\alpha p +\delta_T p,w \rangle &= \langle \delta_T(y(T)-y^T),w\rangle \\
+\langle -p'-\alpha p ,w \rangle &= \langle \delta_T(y(T)-y^T -p),w\rangle
+\end{align*}
+The right hand side is point evaluation at $t=T$, while the left hand side is an expression for all $t$. This finally gives us our adjoint equation: 
+\begin{align*}
+   \left\{
+     \begin{array}{lr}
+       -p'(t) = \alpha p(t) \\
+       p(T) = y(T)-y^T
+     \end{array}
+   \right.
+\end{align*}
+This is a simple and easily solvable ODE.
+\\
+\\
+\textbf{Expression for the gradient}
+\\
+We now have all the ingredients for finding an expression for the gradient of $\hat{J}$. If we remember that $\langle\hat{J}'(u),s\rangle=\langle y'(u)^*J_y(u),s\rangle +\langle J_u(u),s\rangle$, and all the different expressions for all the terms we calculated, we find:
+\begin{align*}
+\langle\hat{J}'(u),s\rangle&=\langle y'(u)^*J_y(u),s\rangle +\langle J_u(u),s\rangle \\ &=\langle -E_u^*p,s\rangle +\langle J_u(u),s\rangle \\
+&=\langle -(-1)^*p,s\rangle +\langle u,s\rangle \\
+&=\langle p+u,s\rangle \\
+&= \int_0^T(p(t)+u(t))s(t)dt
+\end{align*} 
+Note that the adjoint of a constant is just the constant itself.
+\addcontentsline{toc}{section}{Parallelizeing in time using the penalty method}
+\section*{Parallelizeing in time using the penalty method}
+To find the above gradient, we must solve first the state equation forward in time and then the adjoint equation backwards in time. One way of speeding things up is to parallelize the solvers by partitioning the time interval and then solving the equation separately on each partitioned interval. If we split the interval $[0,T]$ into $m$ parts we need to solve $m$ state equations on the following form:
+\begin{align*}
+   \left\{
+     \begin{array}{lr}
+       \frac{\partial }{\partial t} y_i(t) = \alpha y_i(t) + u(t) \ \text{for $t \in [T_{i-1},T_{i}]$}\\
+	y_i(T_{i-1}) = \lambda_{i-1}
+     \end{array}
+   \right.
+\end{align*}
+here $i=1,...,m$, $\lambda_0=y_0$ and $0=T_0<T_1<\cdots<T_{m}=T$. Since the equation on each interval depends on the equation in the previous interval, we need a trick, to get everything to hang together. We do this using the penalty method, which means adding a penalty to the functional. The new functional now looks like this:
+\begin{align*}
+J(y,u,\lambda) = \int_0^T u^2 dt + \frac{1}{2}(y_m(T)-y^T)^2 + \frac{\mu}{2} \sum_{i=1}^{m-1} (y_{i}(T_i)-\lambda_i)^2 
+\end{align*}
+This means that the problem now is to minimize $J$ with respect to both $u$ and $\lambda$, which means that the reduced functional depends on both $u$ and $\lambda$. Since we change the functional and the equation, both the adjoint equation and the gradient changes. Lets try to derive the new adjoint equations and the new gradient. The gradient of the reduced functional now looks like the following:
+\begin{align*}
+\langle \hat{J}'(u,\lambda), (s,l)\rangle &= \langle \frac{\partial y(u,\lambda)}{\partial(u,\lambda)}^* J_y(y(u,\lambda),u,\lambda), (s,l)\rangle + \langle J_u+J_{\lambda}, (s,l)\rangle \\
+&=\langle -(E_u+E_{\lambda})p , (s,l)\rangle + \langle J_u+J_{\lambda}, (s,l)\rangle
+\end{align*} 
+Where p is the solution of the adjoint equation $E_y^*p=J_y$, and $E$ is our ODEs:
+\begin{align*}
+E^i(y,u,\lambda)= \frac{\partial }{\partial t} y_i - \alpha y_i -u+ \delta_{T_{i-1}}(y_i-\lambda_{i-1})
+\end{align*} 
+Lets differentiate $E$:
+\begin{align*}
+E_y^i &= \frac{\partial }{\partial t} - \alpha + \delta_{T_{i-1}} \\
+E_u^i &= -1 \\
+E_{\lambda_{i-1}}^i &= -\delta_{T_{i-1}} \ \text{for $i=2,...,m$}
+\end{align*}
+Lets differentiate $J$:
+\begin{align*}
+\langle J_u,s\rangle &= \int_0^T us \ dt \\
+J_{\lambda_i}&= -\mu(y_{i}(T_i)-\lambda_i) \\
+J_y &= \delta_{T_{m}}(y_n(T_{m})-y_T) + \mu \sum_{i=1}^{m-1} \delta_{T_{i}}(y_{i}(T_i)-\lambda_i ) 
+\end{align*}
+We also need $(E_y^i)^*$
+\begin{align*}
+\int_{T_{i-1}}^{T_{i}} E_y^iw \ v \ dt & = \int_{T_{i-1}}^{T_{i}} (\frac{\partial }{\partial t}w -\alpha w) \ v \ dt + w(T_{i-1})v(T_{i-1}) \\
+&= \int_{T_{i-1}}^{T_{i}}-(\frac{\partial }{\partial t}v+\alpha v) \ w \ dt + w(T_{i})v(T_{i}) \\
+&= \int_{T_{i-1}}^{T_{i}} (-\frac{\partial }{\partial t}-\alpha + \delta_{T_{i}})v \ w \ dt
+\end{align*} 
+this means that $(E_y^i)^*=-\frac{\partial }{\partial t}-\alpha + \delta_{T_{i}}$. This gives us the following expressions for the adjoint equations:
+\\
+\\
+$i=m$ case:
+\begin{align*}
+-\frac{\partial }{\partial t}p_m &=\alpha p_m  \\
+p_m(T_{m}) &= y_m(T_{m})-y_T
+\end{align*}
+$i\neq m$ cases:
+\begin{align*}
+-\frac{\partial }{\partial t}p_i &=p_i  \\
+p_i(T_{i}) &= \mu(y_{i}(T_{i})-\lambda_{i} )
+\end{align*}
+Lets put everything into our expression for or gradient:
+\begin{align*}
+\langle \hat{J}'(u,\lambda), (s,l)\rangle&=\langle -(E_u+E_{\lambda})p, (s,l)\rangle + \langle J_u+J_{\lambda}, (s,l)\rangle \\
+&= \langle (p+\sum_{i=1}^{m-1} \delta_{T_i}p_{i+1}) , (s,l)\rangle+ \int_0^T us \ dt - \mu \sum_{i=1}^{m-1}(y_{i}(T_i)-\lambda_i)l_i\\
+&=\int_0^T (u+p)s \ dt +\sum_{i=1}^{m-1}(p_{i+1}(T_i) -\mu(y_{i}(T_i)-\lambda_i) )l_i \\
+&= \int_0^T (u+p)s \ dt +\sum_{i=1}^{m-1}(p_{i+1}(T_i) -p_{i}(T_i) )l_i
+\end{align*} 
+\section{Burgers Equation}
+Lets look at the optimal control with PDE constraint problem, where the equation is the burgers equation:
+\begin{align*}
+u_t + uu_x - \nu u_{xx} &= 0 \ \text{for $(x,t)\in \Omega\times(0,T)$}\\
+u(x,t) &= h(x,t) \ \text{for $(x,t) \in\partial\Omega\times(0,T)$ } \\
+u(x,0) &= g(x) \ \text{for $x \in\Omega$ }
+\end{align*} 
+Here $\Omega = (a,b)$. The functional is on the form:
+\begin{align*}
+J(u(g),g) = \int_0^T\int_{\Omega} u(x,t)^2 dxdt
+\end{align*}
+Here we want to minimize $J$ with respect to the initial condition $g$. If we differentiate $J$ with respect to $g$, we get:
+\begin{align*}
+\hat{J}'(g)(s) &= \langle u'(g)^*J_u,s \rangle \\
+&= \langle -E_gp,s \rangle
+\end{align*}
+where $p$ is the solution of the adjoint equation:
+\begin{align*}
+E_u^*p = J_u
+\end{align*}
+By $E$ I mean burgers equation, which means that:
+\begin{align*}
+E_u &= \frac{\partial}{\partial t} + u_x + u\frac{\partial}{\partial x} - \nu\Delta + \delta_{t=0} + \delta_{\partial \Omega} \\
+E_g &= -\delta_{t=0} \\
+E_u^* &= -\frac{\partial}{\partial t}  -u\frac{\partial}{\partial x}- \nu\Delta + \delta_{t=T} + (1+h)\delta_{\partial \Omega} \\
+J_u &= 2u
+\end{align*}
+The adjoint equation would then look like:
+\begin{align*}
+-p_t -up_x - \nu p_{xx} &= 2u \ \text{for $(x,t)\in \Omega\times(0,\infty)$}\\
+p(x,t) &= 0 \ \text{for $(x,t) \in\partial\Omega\times(0,\infty)$ } \\
+p(x,T) &= 0 \ \text{for $x \in\Omega$ }
+\end{align*}
+This would mean that the gradient of $\hat{J}$ is:
+\begin{align*}
+\hat{J}'(g)(s) = \langle p(\cdot,0), s\rangle
+\end{align*}
+\textbf{m time intervals}
+\\
+Divide $[0,T]$ into $m$ intervals $[T_{i-1},T_i]$, where $0=T_0<T_1<\cdots<T_m=T$. We then solve burgers equation for $\{u^i(x)\}_{i=1}^m$ on each interval with initial conditions $\{\lambda_i(x)\}_{i=0}^{m-1}$, where $\lambda_0(x)=g(x)$. As for the two interval case, we need to add penalty terms to the functional, to solve the optimization problem. The penalized functional looks like this:
+\begin{align*}
+J(u(g),g,\lambda) = \int_0^T\int_{\Omega} u(x,t)^2 dxdt + \frac{\mu}{2}\sum_{i=1}^{m-1}\int_{\Omega} (u^i(x,T_i)-\lambda_i(x))^2dx
+\end{align*}
+The state equation on each interval looks like:
+\begin{align*}
+u_t^i + u^iu_x^i - \nu u_{xx}^i &= 0 \ \text{for $(x,t)\in \Omega\times(T_{i-1},T_i)$}\\
+u^i(x,t) &= h(x,t) \ \text{for $(x,t) \in\partial\Omega\times(T_{i-1},T_i)$ } \\
+u^i(x,0) &= \lambda_{i-1}(x) \ \text{for $x \in\Omega$ }
+\end{align*} 
+If write this equation as en operator $E^i$, we get:
+\begin{align*}
+E^i &= u_t^i + u^iu_x^i - \nu u_{xx}^i +\delta_{t=T_{i-1}}(u^i-\lambda_{i-1}) + \delta_{\partial \Omega}(u^i-h)
+\end{align*}
+Now lets look at the gradient. The gradient expression for $m$ intervals depends on both $g$ and $\lambda$, which is now a vector $\lambda =(\lambda_1,...,\lambda_{m-1})$. First the gradient:
+\begin{align*}
+\langle \hat{J}'(g,\lambda), (s,l)\rangle =\langle -(E_g+E_{\lambda})p , (s,l)\rangle + \langle J_g+J_{\lambda}, (s,l)\rangle
+\end{align*}
+Again $p$ is the solutions of the adjoint equations $(E_u^i)^*p^i = J_{u^i}$. Lets state the values of the different components in the gradient: 
+\begin{align*}
+E_u^i&=\frac{\partial}{\partial t} + u_x^i + u^i\frac{\partial}{\partial x} - \nu\Delta + \delta_{t=T_{i-1}} + \delta_{\partial \Omega} \\
+E_g^1 &= -\delta_{t=0} \\
+E_{\lambda_i}^i &= -\delta_{t=T_i} \ i\neq 1 \\
+J_g &= 0 \\
+J_{u} &= 2u + \mu\sum_{i=1}^{m-1} (u^i - \lambda_i)\delta_{t=T_i} \\
+\langle J_{\lambda_i},l\rangle &= -\mu\int_{\Omega} (u^i(x,T_i)-\lambda_i(x))l_i(x)dx
+\end{align*}
+This gives us the following adjoint equations:
+\begin{align*}
+-p_t^i -u^ip_x^i - \nu p_{xx}^i &= 2u^i \ \text{for $(x,t)\in \Omega\times(T_{i-1},T_i)$}\\
+p^i(x,t) &= 0 \ \text{for $(x,t) \in\partial\Omega\times(T_{i-1},T_i)$ } \\
+p^m(x,T) &= 0 \ \text{for $x \in\Omega$ } \\
+p^i(x,T_i) &= \mu(u^i(x,T_i)-\lambda_i(x)) \ \text{for $x \in\Omega$ and $i\neq m$}
+\end{align*}
+We can also show that the gradient looks like the following:
+\begin{align*}
+\langle \hat{J}'(g,\lambda), (s,l)\rangle &=\langle -(E_g+E_{\lambda})p , (s,l)\rangle + \langle J_g+J_{\lambda}, (s,l)\rangle \\
+&= \int_{\Omega} p^1(x,0)s(x)dx + \sum_{i=1}^{m-1}\int_{\Omega} (p^{i+1}(x,T_i)-p^i(x,T_i))l_i(x)dx
+\end{align*}
+\end{document}

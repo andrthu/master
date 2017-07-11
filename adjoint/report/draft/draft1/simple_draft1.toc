@@ -1,0 +1,14 @@
+\select@language {english}
+\contentsline {section}{\numberline {1}Literature}{1}
+\contentsline {section}{\numberline {2}General Problem}{2}
+\contentsline {section}{\numberline {3}Optimal control with ODE constraints}{3}
+\contentsline {subsection}{\numberline {3.1}Parallelizeing in time using the penalty method}{5}
+\contentsline {subsection}{\numberline {3.2}Simple example}{9}
+\contentsline {subsection}{\numberline {3.3}Testing manufactured solution to control problem}{12}
+\contentsline {subsection}{\numberline {3.4}Relation between $\mu $ and number of time partitions $m$}{21}
+\contentsline {subsection}{\numberline {3.5}Number of lbfgs iterations and lbfgs memory}{23}
+\contentsline {section}{\numberline {4}Burgers Equation}{25}
+\contentsline {section}{\numberline {5}Extra stuff}{27}
+\contentsline {subsection}{\numberline {5.1}Augmented Lagrange}{27}
+\contentsline {subsection}{\numberline {5.2}Comments on LBFGS and special Hessian update technique}{28}
+\contentsline {section}{References}{31}

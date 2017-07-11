@@ -1,0 +1,34 @@
+import sys
+
+def append_tables(append_file, table_file):
+
+    a_file = open(append_file,'a')
+    t_file = open(table_file,'r')
+
+    a_file.write('''\\''')
+    a_file.write('''\\''')
+    a_file.write(table_file[:-4] +':')
+    a_file.write('''\\''')
+
+    for line in t_file.readlines():
+        a_file.write(line)
+    
+
+    t_file.close()
+    a_file.close()
+
+def main():
+    try:
+       a_file = sys.argv[1]
+       files = sys.argv[2:]
+    except:
+        print 'input plz'
+        return
+
+    for f in files:
+        append_tables(a_file,f)
+
+
+        
+if __name__ == '__main__':
+    main()

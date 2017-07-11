@@ -1,0 +1,366 @@
+\chapter{Discretization and Parallelization of the Penalized Objective Function} \label{disc_chap}
+In the previous chapters we derived the adjoint equation and the gradient for our example optimal control problem with ODE constraints. We also explained how we can parallelize the solving of the state and adjoint equations using the penalty method, and we introduced a preconditioner for our optimization algorithm based on the Parareal scheme. Before we can start to test our Parallel algorithm, we need to discretize the time domain, the equations, the objective function and its gradient. 
+\\
+\\
+We discretize the time interval $I=[0,T]$ by dividing it into $n$ parts of length $\Delta t=\frac{T}{n}$, and set $t_k=k\Delta t$. This gives us a sequence $I_{\Delta t}=\{t_k\}_{k=0}^{n}$ as a discrete representation of the interval $I$. Using $I_{\Delta t}$ we can start to discretize our example problem.
+\section{Discretizing the Non-Penalized Example Problem} \label{DiscGradSec1}
+We restate our example state equation (\ref{exs_E}) and objective function (\ref{exs_J}) for future reference. 
+\begin{align}
+\left\{
+     \begin{array}{lr}
+       	y'(t)=a y(t) +v(t), \ t \in (0,T)\\
+       	   y(0)=y_0
+     \end{array}
+   \right. \label{equation}
+\end{align}
+\begin{align}
+J(y,v) = \frac{1}{2}\int_0^Tv(t)^2dt + \frac{\alpha}{2}(y(T)-y^T)^2
+\label{problem}
+\end{align}
+The reduced gradient of (\ref{problem}) is:
+\begin{align}
+\nabla\hat{J}(v) = v(t)+p(t), \label{gradiant}
+\end{align}
+where $p$ is the solution of the adjoint equation:
+\begin{align}   
+  \left\{
+     \begin{array}{lr}
+	-p'(t) = p(t) \\
+	p(T) = \alpha( y(T)-y^T)     \
+	\end{array}
+   \right. \label{adjoint}
+\end{align}
+We now want to discretize (\ref{equation}-\ref{adjoint}), so we can solve the problem numerically. What we particularly want, is an expression for the gradient. 
+\subsection{Finite Difference Schemes for the State and Adjoint Equations}
+To evaluate the gradient of our example problem numerically, we need to discretize its state (\ref{equation}) and adjoint (\ref{adjoint}) equation. We do this by applying the finite difference schemes introduced in section \ref{FD_sub_sec}. We denote the discrete state as $y_{\Delta t}=\{y_k\}_{k=0}^{n}$ and the discrete adjoint as $p_{\Delta t}=\{p_k\}_{k=0}^{n}$. With explicit Euler, implicit Euler and Crank-Nicholson we get three different expressions for $y_{k+1}$ and $p_{k-1}$, and with these expressions we can solve (\ref{equation}) and (\ref{adjoint}) numerically. We start with the explicit Euler scheme (\ref{EE_formula}):
+\begin{align}
+y_{k+1}&=(1 +\Delta ta) y_{k} + \Delta t v_{k}\label{E_state} \\
+p_{k-1} &=p_k(1 +\Delta ta)\label{E_adjoint}
+\end{align}
+Applying the implicit Euler scheme to (\ref{equation}) and (\ref{adjoint}) yields:
+\begin{align}
+y_{k+1} &=\frac{y_{k} +\Delta t v_{k+1}}{1-a\Delta t} \label{I_state} \\
+p_{k-1} &= \frac{p_k}{1-\Delta ta} \label{I_adjoint}
+\end{align}
+When we use Crank-Nicolson the expressions for $y^{k+1}$ and $p^{k-1}$ are:
+\begin{align}
+y_{k+1} &= \frac{(1+\frac{\Delta ta}{2})y_k +\frac{\Delta t}{2}(v_{k+1}+v_{k})}{1-\frac{\Delta t a}{2}}\label{CN_FD_state} \\
+p_{k-1} &= \frac{1+\frac{\Delta ta}{2}}{1-\frac{\Delta t a}{2}}p_k\label{CN_FD_adjoint}
+\end{align}
+The expressions for the state $y_{k+1}$ stems from the forward solving schemes (\ref{EE_formula}), (\ref{IE_formula}) and (\ref{CN_formula}), while $p_{k-1}$ were found using (\ref{EE_adjoint_formula}), (\ref{IE_adjoint_formula}) and (\ref{CN_adjoint_formula}). One issue that becomes apparent when looking at the finite difference scheme formulas above is the question of stability. For all the schemes certain combinations of $\Delta t$ and $a$ will result in division by zero, or unnatural oscillations. These numerical artefacts can be removed by decreasing $\Delta t$. We summarize the different stability requirements of the three schemes in table \ref{stability_table}, where we for each scheme have written up the stable values of $\Delta t$ for positive and negative $a$ values.  
+\begin{table}[!h]
+\caption{Stability domains for finite difference schemes}
+\label{stability_table}
+\centering
+\begin{tabular}{lrrr}
+\toprule
+{} & $a<0$   & $a>0$  \\
+\midrule
+Explicit Euler & $0<\Delta t<-\frac{1}{a}$ & $\Delta t>0$ \\
+Implicit Euler & $\Delta t>0$ & $0<\Delta t<\frac{1}{a}$ \\
+Crank-Nicolson & $0<\Delta t<-\frac{2}{a}$ & $0<\Delta t<\frac{2}{a}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+We notice that the implicit Euler scheme is stable for all $\Delta t$ values when $a<0$, and that the same holds true for explicit Euler in the case where $a>0$. This makes these schemes attractive candidates for use in coarse propagators in the context of the Parareal algorithm or preconditioner. 
+\subsection{Numerical Gradient} \label{num_grad_sec1}
+We have discretized both the domain and the equations, but we also need to evaluate the objective function (\ref{problem}) numerically. Since integration is involved in (\ref{problem}), we have to choose a numerical integration rule. In section \ref{num_int_sub_sec} we introduced three different methods for numerical integration, namely the left- and right-hand rectangle rule, as well as the trapezoid rule. Which of the methods we use in our discrete objective function depends on which finite difference scheme we used to discretize the ODEs. For explicit Euler we use the left-hand rule, for implicit Euler we use the right-hand rule, and for Crank-Nicholson we use the trapezoid rule. If we for example used Crank-Nicholson and the trapezoid rule to discretize problem (\ref{problem}), the discretized objective function would look like the following:
+\begin{align}
+\hat J_{\Delta t}(v_{\Delta t})&=\frac{1}{2} trapz(v_{\Delta t}^2)+ \frac{\alpha}{2}(y_n-y^T)^2 \\
+&=\Delta t\frac{v_0^2+v_n^2}{4} + \frac{1}{2}\sum_{i=1}^{n-1} \Delta t v_i^2 + \frac{\alpha}{2}(y_n-y^T)^2 \label{disc f}
+\end{align}
+We now want to find the gradient of the discrete objective function for the different combinations of finite difference schemes and integration rules, so that we can minimize (\ref{equation}-\ref{problem}) numerically. The gradients for the different discretizations are stated in terms of the discrete control $v_{\Delta t}$ and discrete adjoint $p_{\Delta t}$ in theorem \ref{Theorem_num_grad} below.
+\begin{theorem} \label{Theorem_num_grad}
+If the implicit Euler finite difference scheme together with the right-hand rectangle rule is used to evaluate the numerical objective function, the gradient $\nabla \hat J_{\Delta t}$ of (\ref{disc f}) will be given as:
+\begin{align}
+\nabla \hat J_{\Delta t}(v_{\Delta t}) = M_0v_{\Delta t} + Bp_{\Delta t} \label{num_grad}
+\end{align}
+where $M_{\theta}$ and $B$ are the matrices:
+\begin{align*}
+M_{\theta}=\left[ \begin{array}{cccc}
+   \theta\Delta t & 0 & \cdots & 0 \\  
+   0& \Delta t & 0 & \cdots \\ 
+   0 &0 & \Delta t  & \cdots \\
+   0 &\cdots &0 & (1-\theta)\Delta t   \\
+   \end{array}  \right] 
+,B = \left[ \begin{array}{cccc}
+   0& 0 & \cdots & 0 \\  
+   \Delta t& 0 & 0 & \cdots \\ 
+   0 & \Delta t& 0  & \cdots \\
+   0 &\cdots & \Delta t& 0   \\
+   \end{array}  \right] 
+\end{align*}
+If one instead uses the explicit Euler finite difference scheme on the differential equations and the left-hand rectangle rule for integration, the gradient will instead be:
+\begin{align*}
+\nabla \hat J_{\Delta t}(v_{\Delta t}) = M_1v_{\Delta t} + B^Tp_{\Delta t}
+\end{align*}
+Lastly if the state and adjoint equation of problem (\ref{equation}-\ref{problem}) is discretized using the Crank-Nicholson scheme, while numerical integration is done using the trapezoid rule, the numerical gradient is:
+\begin{align*}
+\nabla \hat J_{\Delta t}(v_{\Delta t}) = M_{\frac{1}{2}}v_{\Delta t} + \frac{1}{2}( \frac{1}{1+\frac{\Delta t a}{2}} B+\frac{1}{1-\frac{\Delta t a}{2}}B^T)p_{\Delta t}
+\end{align*}
+\end{theorem}
+\begin{proof}
+Let us start with the $M_{\theta}v$ terms of the gradients. These terms comes from the integral $\int_0^T v(t)^2dt$, which we approximate using the numerical integration rules stated in section \ref{num_int_sub_sec}. It turns out that we can define the three integration rules applied to $v_{\Delta t}^2$ using the matrix $M_{\theta}$:
+\begin{align*}
+\int_0^T v(t)^2dt\approx  \Delta t(\theta v_0 +(1-\theta)v_n) + \sum_{i=1}^{n-1} \Delta t v_i^2 = v_{\Delta t}^TM_{\theta} v_{\Delta t}
+\end{align*} 
+The function $f(v)=\frac{1}{2} v^TM_{\theta}v$ obviously has $M_{\theta}v$ as gradient. The second term of the gradient comes from the second term of the functional, namely $g(v)=\frac{\alpha}{2}(y^n -y^T)^2$. This term needs to be handled separately for each finite difference discretization of the ODEs. We start with case where implicit Euler was used. To differentiate $g$ with respect to the $i$-th component of $v$, we will apply the chain rule multiple times. Let us first demonstrate by calculating $\frac{\partial g}{\partial v_n}$:
+\begin{align*}
+\frac{\partial g(v)}{\partial v_n} &= \frac{\partial g(v)}{\partial y_n}\frac{\partial y_n}{\partial v_n} = \alpha(y_n -y^T)\frac{\partial y_n}{\partial v_n}\\
+&= \alpha(y_n -y^T)\frac{\Delta t}{1-a\Delta t}
+\end{align*}
+To get to the second line we used the implicit Euler formula (\ref{I_state}). If we then look at the scheme (\ref{I_adjoint}) for the adjoint equation, we see that:
+\begin{align*}
+\alpha(y_n -y^T)\frac{\Delta t}{1-a\Delta t} = \Delta t\frac{p_n}{1-a\Delta t} = \Delta t p_{n-1}
+\end{align*} 
+Using the same approach, we can find an expression for $\frac{\partial g(v)}{\partial v_i}$: 
+\begin{align*}
+\frac{\partial g(v)}{\partial v_i} &= \alpha(y_n -y^T) (\prod_{k=i+1}^{n}\frac{\partial y_{k}}{\partial y_{k-1}}) \frac{\partial y_i}{\partial v_{i}} = \frac{p_n}{(1-a\Delta t)^{n-i}}\frac{\Delta t}{1-a\Delta t} \\
+&= \frac{p_n\Delta t}{(1-a\Delta t)^{n-i+1}}=\Delta t p_{i-1}
+\end{align*}
+since $v_0$ is not part of the scheme, $\frac{\partial g(v)}{\partial v_0}=0$. If we now write up the gradient of $g(v)$ on matrix form, you get $\nabla g(v) = Bp$. The expression for the gradient in the case where we use the explicit Euler scheme can be found in a similar fashion. In the case we where we are using the Crank-Nicholson scheme for ODE discretization, the algebra of differentiating $g$, gets slightly more complicated. Utilizing the expressions for $y_{k+1}$ and $p_{k-1}$ in (\ref{CN_FD_state}) and (\ref{CN_FD_adjoint}), that we get from applying Crank-Nicholson to the state and adjoint equation, we are able to derive $\frac{\partial g(v)}{\partial v_i}$:
+\begin{align*}
+\frac{\partial g(v)}{\partial v_i} &= \alpha(y_n-y^T)(\frac{\partial y_{i}}{\partial v_{i}}\prod_{k=i+1}^{n}\frac{\partial y_k}{\partial y_{k-1}} +\frac{\partial y_{i+1}}{\partial v_{i}}\prod_{k=i+2}^{n}\frac{\partial y_k}{\partial y_{k-1}}) \\
+&= p_n(\frac{\partial y_{i}}{\partial v_{i}}(\frac{1+\frac{\Delta ta }{2}}{1-\frac{\Delta ta }{2}})^{n-i}+\frac{\partial y_{i+1}}{\partial v_{i}}(\frac{1+\frac{\Delta ta }{2}}{1-\frac{\Delta ta }{2}})^{n-i+1}) \\
+&=\frac{\Delta t}{2(1-\frac{\Delta t a}{2})}(p_i+p_{i+1}) = \frac{\Delta t}{2}(\frac{p_{i-1}}{1+ \frac{\Delta t a}{2}}+\frac{p_{i+1}}{1- \frac{\Delta t a}{2}})
+\end{align*}
+For $i=1,...,n-1$, the last expression of the above calculation is equal to the $i$-th component of $ \frac{1}{2}( \frac{1}{1+\frac{\Delta t a}{2}} B+\frac{1}{1-\frac{\Delta t a}{2}}B^T)p_{\Delta t}$, which is what we wanted to show. By doing similar calculations we see that the Crank-Nicholson gradient stated in theorem \ref{Theorem_num_grad} is also correct for $i=0$ and $i=n$.
+\end{proof} 
+\section{Discretizing the Penalized Example Problem} \label{num_grad_sec2}
+In the previous section we discretized the objective function, state equation and adjoint equation of the example problem (\ref{exs_J}-\ref{exs_E}). We also derived an expression for the gradient of $J$. Let us now do the same for the decomposed problem (\ref{decomp_E}-\ref{penalty_func}). We start by restating the decomposed example ODE, and the penalized objective function.
+\begin{align}
+\left\{
+     \begin{array}{lr}
+       	\frac{\partial}{\partial t} y_i(t)+a y_i(t) = v(t) \ t\in(T_{i-1},T_{i})\\
+       	y^i(T_{i-1})=\lambda_{i-1}
+     \end{array}
+   \right. \label{decomp_E2}
+\end{align}
+\begin{align}
+\hat J_{\mu}(v,\Lambda) = \frac{1}{2}\int_0^Tv(t)^2dt + \frac{\alpha}{2}(y_N(T)-y^T)^2 + \frac{\mu}{2}\sum_{i=1}^{N-1}(y_{i}(T_i)-\lambda_i)^2 \label{penalty_func2}
+\end{align}
+Let us also remember the gradient of (\ref{penalty_func2}) stated in (\ref{penalty grad}):
+\begin{align}
+\hat J_{\mu}'(v,\lambda) = (v+p,p_{2}(T_1) -p_{1}(T_1),..., p_{N}(T_{N-1}) -p_{N}(T_{N-1})). \label{penalty grad2}
+\end{align}
+Before we can discretize the penalized objective function (\ref{penalty_func2}) and its gradient (\ref{penalty grad2}), we need to decompose the discrete time domain $I_{\Delta t}=\{t_k\}_{k=0}^n$. We do this by choosing a subsequence $\{t_{k_i}\}_{i=0}^N\subset I_{\Delta t}$, such that $t_{k_i}=T_i$. Using this subsequence we can define $N$ decomposed discrete subintervals $I_{\Delta t}^i= \{t_{k_{i-1}}, t_{k_{i-1}+1},..., t_{k_{i}}\}$. The discrete subintervals $I_{\Delta t}^i$ contain $n_i$ points, and we choose the subsequence $\{t_{k_i}\}$ so that $n_i$ stays roughly the same for all $i$. Discretizing the decomposed ODEs is straight forward, however the solution of the state and adjoint equations now consists of independent solutions $y_{\Delta t}^i$ and $p_{\Delta t}^i$ on each subinterval $I_{\Delta t}^i$, where 
+\begin{align*}
+y_{\Delta t}^i &= (y_{k_{i-1}}^i,y_{k_{i-1}+1}^i,...,y_{k_{i}}^i) \ \text{and} \\
+p_{\Delta t}^i &= (p_{k_{i-1}}^i,p_{k_{i-1}+1}^i,...,p_{k_{i}}^i), \ i=1,...,N.
+\end{align*} 
+One problem with $y_{\Delta t}^i$ and $p_{\Delta t}^i$ existing independently on each interval, is that we get an overlap on all the subinterval boundaries, which have the potential of complicating the evaluation of the penalized numerical objective function and of its gradient. It turns out that for our example problem this problem only arises in the gradient evaluation. We can therefore quite simply write up the penalized numerical objective function:
+\begin{align}
+\hat J_{\mu,\Delta t}(v_{\Delta t},\Lambda)&=\frac{1}{2} v_{\Delta t}^TM_{\theta}v_{\Delta t}+ \frac{\alpha}{2}(y_n^{N}-y^T)^2 +\frac{\mu }{2}\sum_{i=1}^{N-1} (y_{k_i}^{i}-\lambda_i)^2\\
+&=\Delta t\frac{\theta v_0^2+(\theta-1)v_n^2}{2} + \frac{\Delta t}{2}\sum_{i=1}^{n-1} v_i^2 + \frac{\alpha}{2}(y_n^N-y^T)^2+\frac{\mu }{2}\sum_{i=1}^{N-1} (y_{k_i}^{i}-\lambda_i)^2. \label{pen disc f}
+\end{align}
+We now write up the gradient of the discretized objective function (\ref{pen disc f}) in theorem \ref{Theorem_penalty_grad} expressed in terms of the discrete adjoint $p_{\Delta t}$.
+\begin{theorem} \label{Theorem_penalty_grad}
+The gradient of (\ref{pen disc f}), $\hat J_{\mu,\Delta t}:\mathbb{R}^{N+m}\rightarrow\mathbb{R}$ consists of two parts. The second part $ \nabla\hat J_{\mu,\Delta t}(\Lambda)\in\mathbb{R}^{N-1}$ related to the virtual control is independent of the choice of finite difference scheme, and is given by:
+\begin{align}
+\nabla\hat J_{\mu,\Delta t}(\Lambda) = (p_{k_1}^{2}-p_{k_1}^{1},p_{k_2}^{3}-p_{k_2}^{2},...,p_{N}^{k_{N-1}}-p_{N-1}^{k_{N-1}}). \label{num_pen_grad_lam}
+\end{align} 
+The first part $ \nabla\hat J_{\mu,\Delta t}(v_{\Delta t})\in\mathbb{R}^{m+1}$, which is connected to the real control variable  $v_{\Delta t}$, depends on the finite difference scheme used to discretize the adjoint and state equations. If we use the implicit Euler scheme to evaluate (\ref{pen disc f}), the $v_{\Delta t}$ part of the gradient will be:
+\begin{align}
+\nabla\hat J_{\mu,\Delta t}(v_{\Delta t})= M_{0}v_{\Delta t} + (B^1p_{\Delta t}^1,B^2p_{\Delta t}^2,...,B^Np_{\Delta t}^N), \label{num_pen_grad_v}
+\end{align}
+where $M_{\theta}\in \mathbb{R}^{(n+1)\times (n+1)}$ is the matrix defined in theorem \ref{Theorem_num_grad}, and $B^i\in \mathbb{R}^{n^i\times (n^i-1)}$, for $i>1$ and $B^1\in \mathbb{R}^{n^i\times (n^i)}$ are the matrices defined below. $n^i=k_i-k_{i-1}$ here means the length of vector $p_{\Delta t}^i$.
+\begin{align*}
+B^1 = \left[ \begin{array}{cccc}
+   0& 0 & \cdots & 0 \\  
+   \Delta t& 0 & 0 & \cdots \\ 
+   0 & \Delta t& 0  & \cdots \\
+   0 &\cdots & \Delta t& 0   \\
+   \end{array}  \right]
+,B^i = \left[ \begin{array}{cccc}  
+   \Delta t& 0 & \cdots & 0 \\ 
+   0 & \Delta t& 0  & \cdots \\
+   0 &\cdots & \Delta t& 0   \\
+   \end{array}  \right] .
+\end{align*}
+If one instead uses the explicit Euler finite difference scheme on the differential equations, the gradient will instead look like:
+\begin{align}
+\nabla\hat J_{\mu,\Delta t}(v_{\Delta t})= M_{1}v_{\Delta t} + (\bar B^1p_{\Delta t}^1,\bar B^2p_{\Delta t}^2,...,\bar B^Np_{\Delta t}^N),
+\end{align}
+where $\bar B^i\in \mathbb{R}^{n^i\times (n^i-1)}$ for $i<N$, and $\bar B^1\in \mathbb{R}^{n^i\times (n^i)}$ are defined as:
+\begin{align*}
+\bar B^i = \left[ \begin{array}{cccc}  
+   0 &\Delta t& 0 & \cdots  \\ 
+   0 &0 & \Delta t  & \cdots \\
+   0 &\cdots &  0& \Delta t   \\
+   \end{array}  \right] ,
+\bar B^N = \left[ \begin{array}{cccc}
+   0& \Delta t & \cdots & 0 \\  
+   0& 0 & \Delta t & \cdots \\ 
+   0 & 0& 0  & \Delta t \\
+   0 &\cdots & 0& 0   \\
+   \end{array}  \right].   
+\end{align*}
+Finally the gradient of the discrete objective function, in the case where we use Crank-Nicholson to dicretize the ODEs is:
+\begin{align*}
+\nabla\hat J_{\mu,\Delta t}(v_{\Delta t})= M_{\frac{1}{2}}v_{\Delta t} + \frac{1}{2}(\frac{1}{1+\Delta t a} Bp_{\Delta t} + \frac{1}{1-\Delta t a}\bar{B}p_{\Delta t}).
+\end{align*}  
+Here $B,\bar{B}\in\mathbb{R}^{n+N\times n+1}$ are matrices, which we can define using block notation:
+\begin{align*}
+B = \left[ \begin{array}{cccc}
+   B^1& 0 & \cdots & 0 \\  
+   0& B^2 & 0 & \cdots \\ 
+   0 & 0& \cdots  & 0 \\
+   0 &\cdots & 0& B^N   \\
+   \end{array}  \right],
+\bar B = \left[ \begin{array}{cccc}
+   \bar B^1& 0 & \cdots & 0 \\  
+   0& \bar B^2 & 0 & \cdots \\ 
+   0 & 0& \cdots  & 0 \\
+   0 &\cdots & 0& \bar B^N   \\
+   \end{array}  \right].
+\end{align*}
+By $p_{\Delta t}\in\mathbb{R}^{n+N}$ we mean the vector $p_{\Delta t}=(p_{\Delta t}^1,p_{\Delta t}^2,...,p_{\Delta t}^N)$
+\end{theorem}
+\begin{proof}
+Let us begin with the $\Lambda$ part of the gradient. We find each component by differentiating $\hat J_{\mu,\Delta t} $ with respect to $\lambda_i$, for $i=1,...,N-1$. It turns out there are two cases, namely $i=N-1$ and $i\neq N-1$, these cases are however quite similar, so we will only do the $i\neq N-1$ case. For each $i=1,...,N-2$, there are only two terms in $\hat J_{\mu,\Delta t} $ that depend on $\lambda_i$, and these are $\lambda_i$ itself and $y_{k_{i+1}}^{i+1}$. With this in mind let us start to differentiate $\hat J_{\mu,\Delta t} $.
+\begin{align*}
+\frac{\partial\hat J_{\mu,\Delta t}}{\partial \lambda_i}(v_{\Delta t},\Lambda) &=-\mu (y_{k_i}^i-\lambda_i) +\mu(y_{k_{i+1}}^{i+1}-\lambda_{i+1})\frac{\partial y_{k_{i+1}}^{i+1}}{\partial \lambda_i}  \\
+&=\mu(y_{k_{i+1}}^{i+1}-\lambda_{i+1})(\frac{1}{1-a\Delta t})^{k_{i+1}-k_i} -\mu (y_{k_i}^i-\lambda_i).
+\end{align*}
+To get the $(\frac{1}{1-a\Delta t})^{k_{i+1}-k_i}$ term we used the chain rule on $\frac{\partial y_{k_{i+1}}^{i+1}}{\partial \lambda_i}$ and the implicit Euler scheme for our particular equation given in (\ref{I_state}). The next step is done by noticing that the terms $\mu (y_{k_i}^i-\lambda_i)$ and $\mu(y_{k_{i+1}}^{i+1}-\lambda_{i+1})$ are the initial conditions of the $i$-th and $i+1$-th adjoint equations, which means that $\mu (y_{k_i}^i-\lambda_i)=p_{k_i}^{i}$ and $\mu(y_{k_{i+1}}^{i+1}-\lambda_{i+1})=p_{k_{i+1}}^{i+1}$. Inserting this we get:
+\begin{align*}
+\frac{\partial\hat J_{\mu,\Delta t}}{\partial \lambda_i}(v_{\Delta t},\Lambda) &=p_{k_{i+1}}^{i+1}(\frac{1}{1-a\Delta t})^{k_{i+1}-k_i} -p_{k_i}^{i} \\
+&= p_{k_{i}}^{i+1}-p_{k_i}^{i}.
+\end{align*}
+The last step is done by utilizing the implicit Euler scheme for our adjoint equation (\ref{I_adjoint}).
+\\
+\\
+The $v_{\Delta t}$ part of the gradient is almost equal to the non-penalized gradient, the only difference being that the adjoint now is defined separately on each subinterval and not on the entire time interval $[0,T]$. We can again divide the functional (\ref{pen disc f}) into two parts, the integral over $v_{\Delta t}$ , $f(v_{\Delta t})=\frac{1}{2} v_{\Delta t}^*M_{\theta}v_{\Delta t}$ and 
+\begin{align*}
+g(v_{\Delta t}) = \frac{\alpha}{2}(y_n^N-y^T)^2+\frac{\mu }{2}\sum_{i=1}^{N} (y_{k_i}^{i}-\lambda_i)^2.
+\end{align*} 
+As for the non-penalized gradient, the derivative of the $f$ term is quite easily seen to be $M_{\theta}v_{\Delta t}$, the problems start when we want to differentiate $g$ with respect to a specific component $v_k$ in $v_{\Delta t}$. If we are using the implicit Euler scheme to dicretize the state and adjoint equations, the $k$-th component of $v_{\Delta t}$ only affects the solution of one of the $n$ state equations. If $k\in \{k_{i-1}+1,k_{i-1}+2,...,k_{i}\}$, $v_k$ is used to find $y_{\Delta t}^i$, which means that the only term in $g$, that depend on $v_k$, is  $\frac{\mu }{2}(y_{k_i}^{i}-\lambda_i)^2$ if $i\neq N$, or $\frac{1}{2}(y_n^N-y^T)^2$ if $i=N$. If we now assume that $i\neq N$ and $k\in \{k_{i-1}+1,k_{i-1}+2,...,k_{i}\}$, we can differentiate $g$ with respect to $v_k$:
+\begin{align*}
+\frac{\partial g}{\partial v_k} &=\mu( y_{k_i}^{i}-\lambda_i) (\prod_{l=k+1}^{k_{i+1}}\frac{\partial y_{l}}{\partial y_{l-1}}) \frac{\partial y_k}{\partial v_{k}} = \frac{p_{k_i}^i}{(1-a\Delta t)^{k_{i}-k}}\frac{\Delta t}{1-a\Delta t} \\
+&= \frac{p_{k_i}^i\Delta t}{(1-a\Delta t)^{k_i-k+1}}=\Delta t p_{k-1}^i.
+\end{align*}
+The numerical gradient restricted to $ \{k_{i-1}+1,k_{i-1}+2,...,k_{i}\}$, will then be $B^ip_{\Delta t}^i$, which exactly what we claimed.
+\end{proof}
+\section{Parallelization of Function and Gradient Evaluation}
+The most computationally costly part of algorithm \ref{PPC_PEN_ALG} is evaluating the penalized objective function and its gradient. These evaluations are needed to find the search direction and step length in the BFGS line search method. In this section we present parallel algorithms for the evaluation of the penalized objective function and its gradient, in a setting where we assume no shared memory between the processes. We will in particular focus on the communication that takes place between the processes, since the communication steps are important for understanding the performance of the algorithms. The function evaluation requires us to solve the state equation, while the calculation of the gradient needs both the solution of the state and adjoint equation. The algorithms for function and gradient evaluation are obviously different, however, they both share the same starting point, which we explain below.
+\\
+\\
+Let us assume that we have $N$ processes, which we name $\{P_{i}\}_{i=0}^{N-1}$. Then assume that each process $P_i$ only knows the parts of the control that are required for the process to solve the state equation and to locally evaluate the objective function. This also includes the the virtual control variables $\{\lambda_i\}_{i=1}^{N-1}$. To make it simple let us also assume that there is no overlap in the real control between the processes, which is the case for explicit and implicit Euler discretizations of the state and adjoint equations, but not for Crank-Nicolson discretizations. After each process $P_i$ has solved their part of the state equation, they all have the following data stored locally:
+\begin{align*}
+&\textit{Control variable: } \ v_{i+1} \\
+&\textit{Penalty control variable: } \ \lambda_i \\
+&\textit{Solution to local state equation: } \ y^{i+1} =\{y_j^{i+1}\}_{j=k_{i}}^{ k_{i+1}}
+\end{align*}
+Using this data we should be able to evaluate the penalized objective function, or to calculate its gradient.
+\subsection{Parallel Algorithm for Objective Function Evaluation}
+The penalized objective function consists of two parts:
+\begin{align*}
+\hat J_{\mu}(v,\lambda) = \hat{J}(y(v),v) + \frac{\mu}{2}\sum_{j=1}^{N-1}(y^{j}(T_j)-\lambda_j)^2.
+\end{align*}
+Let us begin with the penalty term. Each process $P_i$ only have $\lambda_i$ and $y^{i+1}(T_{i+1})$ stored locally. This means that to calculate all penalty terms the processes will have to send either $\lambda_i$ or $y^{i+1}(T_{i+1})$ to one of its neighbours. For example $P_i$ could send $\lambda_i$ to $P_{i-1}$ for $i=1,...,N-1$:
+\begin{align*}
+P_0\overset{\lambda_1}{\longleftarrow}P_1\overset{\lambda_2}{\longleftarrow}P_2 \overset{\lambda_3}{\longleftarrow}\cdots \overset{\lambda_{N-2}}{\longleftarrow}P_{N-2}\overset{\lambda_{N-1}}{\longleftarrow}P_{N-1}
+\end{align*} 
+For the evaluation of $ \hat{J}(y(v),v)$, let us assume that there exists functions $\hat{J}^{i+1}(y^{i+1}(v_{i+1}),v_{i+1})$, such that:
+\begin{align*}
+\hat{J}(y(v),v)= \sum_{j=1}^{N}\hat{J}^j(y^j(v_j),v_j).
+\end{align*}
+If this is the case we can evaluate each part of the objective function locally, and then get the global $\hat{J}_{\mu}$ by doing one summation reduction. The penalized objective function evaluation algorithm is:
+\\
+\\
+\begin{algorithm}[H]
+\KwData{Partitioned control variable $(v_{i+1},\lambda_i)$ given as input to each process $P_i$ for $i=0,...,N-1$.}
+\Begin{
+Process $P_i$ solve state equation $y^{i+1}$ using $(v_{i+1},\lambda_i)$\tcp*[h]{In parallel}\;
+\For{$i=1,...,N-1$}{
+$P_{i-1}\overset{\lambda_i}{\longleftarrow}P_{i}$\;
+}
+\tcp*[h]{Evaluate local objective function $\hat{J}_{\mu}^{i}$ in parallel}\;
+\eIf{$i ==N-1$}{
+$\hat{J}_{\mu}^{N}(y^{N}(v_{N}),v_{N})\leftarrow \hat{J}^{N}(y^{N}(v_{N}),v_{N}) $\;
+}{
+$\hat{J}_{\mu}^{i+1}(y^{i+1}(v_{i+1}),v_{i+1}) \leftarrow \hat{J}^{i+1}(y^{i+1}(v_{i+1}),v_{i+1}) + \frac{\mu}{2}(y^{i+1}(T_{i+1})-\lambda_{i+1})^2$
+}
+$ \hat{J}_{\mu}(y(u),u)\leftarrow\textbf{MPI\_Reduce}(\hat{J}_{\mu}^{i+1},+)$ 
+}
+\caption{Parallel objective function evaluation \label{OFEVAL}}
+\end{algorithm}
+\subsection{Parallel Algorithm for Gradient Evaluation}
+The gradient of the penalized optimal control problem looks like the following:
+\begin{align*}
+\nabla \hat J_{\mu}(v,\lambda) = (J_v(y(v),v)-B^*p,\{p_{i+1}(T_i) - p_{i}(T_i)\}_{i=1}^{N-1}).
+\end{align*}
+$p$ is here the solution to the adjoint equation, which has to be calculated before we can evaluate the gradient, and $B=E_y(y,v,\Lambda)$. For processes $P_i$, $i<N-1$, the initial condition of the adjoint equation is $p^{i+1}(T_{i+1})=\mu(y^{i+1}(T_{i+1}-\lambda_{i+1})$. This means that the first step after solving the state equations for gradient evaluation, is the same as for function evaluation, i.e. we have to send $\lambda_i$ from $P_{i}$ to $P_{i-1}$:
+\begin{align*}
+P_0\overset{\lambda_1}{\longleftarrow}P_1\overset{\lambda_2}{\longleftarrow}P_2 \overset{\lambda_3}{\longleftarrow}\cdots \overset{\lambda_{N-2}}{\longleftarrow}P_{N-2}\overset{\lambda_{N-1}}{\longleftarrow}P_{N-1}
+\end{align*}
+Each process can now solve its adjoint equation locally, and we can start to actually evaluate the gradient. The first step, would be to send $p_{i+1}(T_{i})$ from $P_i$ to $P_{i-1}$ so that we can find the penalty part of the gradient. Each process should also be able to calculate their own part of the gradient as $\nabla \hat J^{i+1}=(J_v(y^{i+1}(v_{i+1}),v_{i+1})-B^*_{i+1}p^{i+1})$. The final step is now to gather all the local parts of the gradient to the form the actual gradient. In summation we get the following algorithm for gradient evaluation:
+\\
+\\
+\begin{algorithm}[H]
+\KwData{Partitioned control variable $(v_{i+1},\lambda_i)$ given as input to each process $P_i$ for $i=0,...,N-1$.}
+\Begin{
+Process $P_i$ solve state equation $y^{i+1}$ using $(v_{i+1},\lambda_i)$\tcp*[h]{In parallel}\;
+\For{$i=1,...,N-1$}{
+$P_{i-1}\overset{\lambda_i}{\longleftarrow}P_{i}$\;
+}
+Process $P_i$ solve adjoint equation $p^{i+1}$ using $(y_{i+1},\lambda_{i+1})$\tcp*[h]{In parallel}\;
+\For{$i=1,...,N-1$}{
+$P_{i-1}\overset{p^{i+1}(T_{i})}{\longleftarrow}P_{i}$\;
+}
+\tcp*[h]{Evaluate local gradient $\nabla \hat J_{\mu}^i$ in parallel}\;
+$\nabla \hat J^{i+1}_{v_{i+1}}\leftarrow J_v(y^{i+1}(v_{i+1}),v_{i+1})-B^*_{i+1}p^{i+1}$\;
+\If{$i\neq N-1$}{
+$\nabla \hat J^{i+1}_{\lambda_{i+1}}\leftarrow p_{i+2}(T_{i+1}) - p_{i+1}(T_{i+1})$\;
+}
+$\nabla \hat J_{\mu} \leftarrow \textbf{MPI\_Gather}(\nabla \hat J^{i+1},p_{i+1}(T_i) - p_{i}(T_i)) $\;
+}
+\caption{Parallel gradient evaluation \label{GEVAL}}
+\end{algorithm}
+\section{Analysing Theoretical Parallel Performance} \label{analysis sec}
+Now that we know what type of communication is involved in objective function evaluation and gradient computation, we can try to model the expected performance of the two algorithms. One way to measure performance of algorithms is to look at their execution times. Therefore let us define $T_s$ as execution time of the sequential algorithm, and $T_p$ as parallel algorithm execution time. Let us also define the speedup $S=\frac{T_s}{T_p}$. Since we for now are only modelling performance we do not actually calculate the execution times, but we do know that the run time of the algorithms are related to the size of the problem, meaning the number of time steps $n$. The final thing we need before we start our performance analysis, is a way to model communication between two processes. One way of modelling the communication time $T_c$ for sending a message of size $m$ between to processes, is proposed in \cite{grama2003introduction} as:
+\begin{align*}
+T_c = T_l + mT_w
+\end{align*} 
+Here $T_l$ is a constant representing latency or startup time, while $T_w$ is a constant representing the per message-unit transfer time. With these tools, we can now start analysing the performance of our algorithms.
+\subsection{Objective Function Evaluation Speedup}
+To evaluate the objective function, we first need to solve the state equation. If we have discretized the state equation using $n+1$ time steps, evolving the state equation requires $\mathcal{O}(n)$ operations. The next step is then to apply the functional on the control and the state, which we assume at most requires $\mathcal{O}(n)$ operations. The sequential objective function evaluation execution time is therefore:
+\begin{align*}
+T_s = \mathcal{O}(n).
+\end{align*}
+In our parallel algorithm we also solve the state equation and apply the functional, but since we divide the time steps equally between all processes, solving the state equation and applying the functional only requires $\mathcal{O}(\frac{n}{N})$ operations. Since we also have penalty terms in our functional we get additional $\mathcal{O}(N)$ operations. Now for the communication. We are doing two communication steps one is sharing the $\lambda$s between process neighbours, and the other is reducing the local function values into one global function value. The send and receive time is given by $T_c = T_l + \textit{dim}(\lambda_i)T_w$, which requires $\mathcal{O}(1)$ operations, while the reduction time $T_{red}$ can be modelled as:
+\begin{align*}
+T_{red} &= \log N (T_l+T_w) \\
+&= \mathcal{O}(\log N).
+\end{align*} 
+Here we assume that the parallel architecture is made in a certain way, and that the local functional value is a floating point. This results in parallel function evaluation execution time:
+\begin{align*}
+T_p &= \mathcal{O}(\frac{n}{N}) +\mathcal{O}(N) + \mathcal{O}(\log N) +\mathcal{O} (1) \\
+&=\mathcal{O}(\frac{n}{N}) +\mathcal{O}(N).
+\end{align*}
+The speedup is then:
+\begin{align*}
+S &= \frac{T_s}{T_p} = \frac{\mathcal{O}(n)}{\mathcal{O}(\frac{n}{N}) +\mathcal{O}(N)} \\
+&=\mathcal{O}(N).
+\end{align*}
+This is an optimal speedup.
+\subsection{Gradient Evaluation Speedup}
+When we calculate the objective function gradient sequentially, we solve both the state and adjoint equations. The required operations are however still in the order of number of time steps, i.e:
+\begin{align*}
+T_s = \mathcal{O}(n).
+\end{align*}
+For the parallel algorithm the operations required to solve the local state and adjoint equations are $\mathcal{O}(\frac{n}{N})$. We then have two $\mathcal{O}(1)$ send-receive communications similar to the send and receive for function evaluation. Lastly we need to model the gathering of the gradient. First define $L$ to be the length of the gradient. The run time of the gather $T_{gather}$, can then be modelled as:
+\begin{align*}
+T_{gather} &= T_l\log N + \frac{L}{N}T_w(N-1) \\
+&= \mathcal{O}(\log N) + \mathcal{O}(L).
+\end{align*}
+The execution time of the parallel algorithm is therefore:
+\begin{align*}
+T_p = \mathcal{O}(\frac{n}{N}) + \mathcal{O}(\log N) + \mathcal{O}(L).
+\end{align*}
+Again we find the speedup by dividing $T_s$ by $T_p$:
+\begin{align*}
+S &= \frac{T_s}{T_p} = \frac{\mathcal{O}(n)}{\mathcal{O}(\frac{n}{N}) + \mathcal{O}(\log N) + \mathcal{O}(L)} \\
+&=\frac{1}{\frac{1}{N} + \frac{\log N}{n}+\frac{L}{n}} = \frac{1}{\frac{1}{N} +\frac{L}{n}}.
+\end{align*}
+If $L$ is independent of $n$, the speedup for gradient evaluation is $\mathcal{O}(N)$, like it is for function evaluation, however if $L$ is dependent on $n$, this is not the case, and we would instead get speedup $S=\mathcal{O}(\frac{n}{L(n)})$. In a case where the control for example is the source term in the state equation, we would actually get $S=\mathcal{O}(1)$, which is really bad, and we would not expect any improvement when using parallel, at least for large $n$ values. There is however a way to get around this problem, which is to store both the gradient and the control locally, which means that you never have to do a gather call. If this is done, and if a solution spread between all processes is accepted, the speedup for gradient evaluation will also be $\mathcal{O}(N)$.

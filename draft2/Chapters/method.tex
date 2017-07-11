@@ -1,0 +1,611 @@
+\chapter{Parareal-Based BFGS Preconditioner} \label{method_chap}
+In the previous chapter we saw that the Parareal scheme allows us to parallelize time-dependent differential equations in their temporal direction. In this chapter we will present a parallel in time method for optimal control problems with time-dependent differential equation constraints. 
+\\
+\\
+This chapter consists of four sections. In the first section we decompose the time domain as we did in section \ref{Para_dcomp_sec}, only now in the context of control problems with time-dependent DE constraints. Decomposing the time interval leads to a reformulation of the control problem that includes extra constraints on the state equation. How to handle these new constraints are dealt with in section \ref{penalty_sec}. To solve this constrained problem, we use the same approach as \cite{maday2002parareal} namely the penalty method. The penalty method is a simplified version of the augmented Lagrangian approach used in \cite{rao2016time} for parallel in time 4d variational data assimilation. We demonstrate the use of the penalty method by revisiting the example problem from section \ref{example_sec}.
+\\
+\\
+In the third section a Parareal based preconditioner to be used in the optimization algorithms solving the optimal control problems is presented. This preconditioner originally proposed in \cite{maday2002parareal} is derived using ideas from subsection \ref{algebraic_sec} and we will in chapter \ref{Experiments chapter} see that it is crucial for the parallel in time algorithm to obtain any meaningful speedup. In the fourth and last section we propose a parallel in time method based on the penalty framework of section \ref{penalty_sec} and the BFGS optimization algorithm. The Parareal-based preconditioner from section \ref{pc sec} is used as an initial inverted Hessian approximation in the BFGS algorithm.
+\section{Optimal Control with Time-Dependent ODE Constraints on a Decomposed Time Interval} \label{decomp_sec}
+We want to solve reducible optimization problems of type (\ref{OCP_DEF_J}-\ref{OCP_DEF_E}), where the state equation constraint $E(y(t),v,y_0)=0$ is time-dependent and solved on the interval $I=[0,T]$, with initial condition $y_0$. To introduce parallelism to our optimal control problem, we need to decompose the time domain and the state equation as we did in chapter \ref{parareal_chap}. 
+\begin{definition}[Decomposed state equation] \label{DecompEDef}
+Let $0=T_0<T_1<\cdots<T_{N-1}<T_N=T$ and define the $i$-th decomposed subinterval to be $I_i=[T_{i-1},T_i]$. We then introduce $N-1$ intermediate initial conditions $\Lambda=(\lambda_1,...,\lambda_{N-1})$, and set $\lambda_0=y_0$. Using these intermediate initial conditions we are able to define $N$ decomposed state equations:
+\begin{align}
+E^i(y_i(t),v,\lambda_{i-1})= 0 \quad t\in I_i. \label{DecompState}
+\end{align} 
+Solving the state equation $E(y(t),v,\Lambda)=0$ on the entire time domain, then means solving the $N$ decomposed equations (\ref{DecompState}) for $y_i$, and setting the state $y(t)$ to be:
+\begin{align}
+ y(t)=\left\{
+     \begin{array}{lr}
+		y_1(t)\quad t\in [T_0,T_1] \\
+		y_2(t)\quad t\in(T_1,T_2] \\
+		\cdots \quad\quad\cdots\\
+		y_N(t)\quad t\in(T_{N-1},T_N]
+	\end{array}
+   \right.	\label{GatherState}
+\end{align}
+\end{definition}
+\noindent
+Using the decomposed time interval, state and state equation of definition \ref{DecompEDef}, we can define the decomposed optimal control problem. Since we want to solve the decomposed state equations simultaneously, the intermediate initial conditions $\Lambda$ will be added to the optimization problem as additional control variables. Because these variables are artificially introduced by us, we refer to $\Lambda$ as the virtual control, while we call the original control $v$ the real control. We also want the state to be continuous, so we need to introduce new constraints on the problem that enforces the continuity of $y(t)$. These new constraints are written up along with the decomposed reformulation of the optimal control problem in definition \ref{DecompOCPDef}.
+\begin{definition}[Decomposed optimal control problem] \label{DecompOCPDef}
+Let $Y,V,Z$ be defined as in definition \ref{OCP_def}. The decomposed optimal control problem with time-dependent DE constraint is the following minimization problem:
+\begin{align}
+\underset{y\in Y,v\in V,\Lambda}{\text{min}} \ &J(y(t),v,\Lambda),  \label{decomposed problem1}\\
+\textrm{subject to:} \ &E(y(t),v,\Lambda)=0, \quad t\in [0,T]. \label{decomposed problem}
+\end{align}
+To enforce the continuity of $y(t)$ between subintervals, we introduce extra constraints:
+ \begin{align}
+y_{i}(T_i)=y_{i+1}(T_i)=\lambda_i \quad \ i=1,..,N-1. \label{Extra constraints}
+\end{align}
+\end{definition}
+\noindent
+If all the decomposed state equations $E^i(y_i,v,\lambda_{i-1})=0$ are uniquely solvable for all control variables $v\in V$, we can reduce the decomposed optimization problem from definition \ref{DecompOCPDef}. We write up the reduced version of problem (\ref{decomposed problem1}-\ref{Extra constraints}) in the next definition.
+\begin{definition}[Decomposed and reduced optimal control problem] \label{DecompRedOCPDef}
+Consider problem (\ref{decomposed problem1}-\ref{Extra constraints}). We assume that this problem is reducible, and can therefore define $\hat J:V\rightarrow\mathbb{R}$ as:
+\begin{align*}
+\hat J(v,\Lambda) = J(y(v,\Lambda)(t),v,\Lambda)
+\end{align*}
+The decomposed and reduced optimal control problem with time-dependent differential equation constraints is then the following constrained minimization problem:
+\begin{align}
+&\underset{v\in V,\Lambda}{\text{min}} \ \hat J(v,\Lambda), \label{constrained reduced j}\\
+&y_{i}(T_i)=\lambda_i, \ \quad  i=1,...,N-1. \label{constrained reduced}
+\end{align}
+\end{definition}
+\noindent
+Unlike the undecomposed case, the reduced and decomposed optimal control problem is not unconstrained. A strategy for handling the extra constraints (\ref{constrained reduced}) is discussed in the next section.
+\section{The Penalty Method} \label{penalty_sec}
+To solve the constrained problem (\ref{constrained reduced j}-\ref{constrained reduced}), we will use the penalty method\cite{nocedal2006numerical}, which transforms constrained problems into a series of unconstrained problems. This is done by moving the constraints into the objective function $J(v,\Lambda)$. For each constraint a term is added to $J$, which is positive for variables that does not satisfy the constraint, but zero if it does. The penalization of the constraints can be done in different ways, but we will restrict ourself to the quadratic penalty method, where the the terms penalizing the constraints are quadratic. 
+\begin{definition}[Quadratic penalty method]\label{QuadPenMethDef}
+Consider the constrained optimization problem:
+\begin{align}
+\min_x f(x)\quad\textrm{subject to: } c_i(x)=0,\quad i=1,...,N, \label{general_opti}
+\end{align}
+Given a penalty parameter $\mu>0$, the quadratic penalty method defines an altered functional $f_{\mu}:X\rightarrow\mathbb{R}$ related to the functional of problem (\ref{general_opti}).
+\begin{align}
+f_{\mu}(x) = f(x) +\frac{\mu }{2}\sum_{i=1}^Nc_i(x)^2 \label{general_opti_pen}
+\end{align}
+Minimizing $f_{\mu}$ is an unconstrained optimization problem. If we now instead consider our decomposed optimization problem (\ref{constrained reduced j}-\ref{constrained reduced}), we can write up its penalized objective function $\hat J_{\mu}$ as:
+\begin{align}
+\hat J_{\mu}(v,\Lambda) = \hat J(v) + \frac{\mu}{2}\sum_{i=1}^{N-1}(y_{i}(T_i)-\lambda_i)^2. \label{pen_obj_J}
+\end{align}
+\end{definition}
+\noindent
+The idea of the penalty method is that the minimizer of (\ref{general_opti_pen}) should approach a feasible minimizer of (\ref{general_opti}) when we increase the penalty parameter $\mu$. Since the penalized problem can be difficult to solve for large $\mu$ values, the usual approach for solving constrained problems with the penalty method, is to minimize the penalized objective function for an increasing sequence of penalty parameters $\mu$. We write up the general algorithmic framework of the penalty method applied to problem (\ref{constrained reduced j}-\ref{constrained reduced}) in algorithm \ref{PEN_ALG}. 
+\\
+\\
+\begin{algorithm}[H] 
+\KwData{Choose $\mu_0,\tau_0>0$, and some initial control $(v^0,\Lambda^0$)}
+\For{$k=1,2,...$}{
+Find $(v^k,\Lambda^k)$ s.t. $\parallel\nabla \hat J_{\mu_{k-1}}(v^k,\Lambda^k)\parallel<\tau_{k-1}$\;
+\eIf{STOP CRITERION satisfied}{
+$\bold{Stop}$ algorithm\;
+}{
+Choose new $\tau_k\in(0,\tau_{k-1})$ and $\mu_k\in(\mu_{k-1},\infty) $\;
+}
+}
+\caption{Penalty method \label{PEN_ALG}}
+\end{algorithm}
+\noindent
+\\
+If we want to use the penalty method, we need to know if the framework presented in algorithm \ref{PEN_ALG} is consistent. We say that the penalty method is consistent, if for a given global minimizer $(v,\Lambda)$ of $\hat J$, the iterates $(v^k,\Lambda^k)$ produced by framework \ref{PEN_ALG} converges to $(v,\Lambda)$, meaning:
+\begin{align*}
+\lim_{k\rightarrow \infty} (v^k,\Lambda^k) =(v,\Lambda).
+\end{align*}
+From \cite{nocedal2006numerical} we get a result that deals with this:
+\begin{theorem} \label{consistency theorem}
+Assume that $\forall k$, $(v^k,\Lambda^k)$ is the exact global minimizer of $J_{\mu_k}$ in context of the framework in algorithm \ref{PEN_ALG}. Then each limit point of the sequence $\{(v^k,\Lambda^k)\}$ is a solution of the problem (\ref{constrained reduced j}-\ref{constrained reduced}).
+\end{theorem}
+\begin{proof}
+\cite{nocedal2006numerical}
+\end{proof}
+\noindent
+Theorem \ref{consistency theorem} tells us that the penalty method of algorithm \ref{PEN_ALG} is consistent, if we for all $k$ can find an exact global minimizer of $J_{\mu_k}$. In practice, finding an exact minimizer of the penalized objective function is not always achievable. Another theorem from \cite{nocedal2006numerical} indicates what to expect if we are unable to find a global minimizer of $J_{\mu_k}$ for all $k$'s.
+\begin{theorem} \label{feasible theorem}
+If the tolerance $\tau_k$ and the penalty parameter $\mu_k$ of the method in algorithm \ref{PEN_ALG} satisfy
+\begin{align*}
+\lim_{k\rightarrow\infty} \tau_k =0,\quad \textrm{and} \quad \lim_{k\rightarrow\infty} \mu_k = \infty.
+\end{align*}
+the limit point of the the sequence $\{(v^k,\Lambda^k)\}$ will be a feasible point. In context of problem (\ref{constrained reduced j}-\ref{constrained reduced}), this means that:
+\begin{align*}
+\forall i=1,...,N-1\quad\lim_{k\rightarrow\infty}(y_{i}^k(T_i)-\lambda_i^k)=0 
+\end{align*}
+\end{theorem}
+\begin{proof}
+\cite{nocedal2006numerical}
+\end{proof}
+\noindent
+Theorem \ref{consistency theorem} provides the theoretical consistency of the method in algorithm \ref{PEN_ALG}, this consistency is based on the assumption that we are able to minimize the penalized objective function for ever increasing penalty parameters $\mu$. Theorem \ref{feasible theorem} shows that the quadratic penalty method at least will produce a feasible control solution. In section \ref{consistency_sec} we will try to verify the consistency of algorithm \ref{PEN_ALG} for the example problem, and we will see that theorem \ref{consistency theorem} and \ref{feasible theorem} are crucial for understanding the results we get. 
+\\
+\\
+We will now look at the most important part of the framework in algorithm \ref{PEN_ALG}, namely the optimization of the penalized objective function $\hat J_{\mu}$. To be able to optimize $\hat J_{\mu}$, we need its gradient, and we will therefore in the next section derive the gradient of the general penalized objective function (\ref{pen_obj_J}) using the adjoint approach. We will also find an expression for $\hat J_{\mu}'(v,\Lambda)$ for the example problem (\ref{exs_J}-\ref{exs_E}). In section \ref{pc sec} we will present a Parareal-based preconditioner, that we will use to improve the optimization of $\hat J_{\mu}$.
+\subsection{The Gradient of the Penalized Objective Function}
+We have introduced the penalized objective function (\ref{pen_obj_J}), that depends on both the real and virtual control, and we now want to evaluate its gradient. We again take the adjoint approach as we did in section \ref{adjointGrad_sec}, and the expression for $\hat J_{\mu}'(v,\Lambda)$ belonging to the general optimization problem (\ref{decomposed problem1}-\ref{decomposed problem}) is given in proposition \ref{penalty_grad_prop}.
+\begin{proposition}[Gradient of the penalized objective function] \label{penalty_grad_prop}
+Let $\hat J_{\mu}$ be the penalized objective function (\ref{pen_obj_J}). With similar assumptions as in proposition \ref{redGrad_prop}, the gradient of $\hat J_{\mu}$ is as follows: 
+\begin{align}
+\hat J_{\mu}'(v,\Lambda)=-(E_v(y(t),v,\Lambda)^*+E_{\Lambda}(y(t),v,\Lambda)^*)p(t)+ (\frac{\partial}{\partial v}+\frac{\partial}{\partial\Lambda})J_{\mu}(y,v,\Lambda). \label{pen_abs_grad}
+\end{align}
+The decomposed adjoint $p(t)$ is defined on $I=[0,T]$ as:
+\begin{align}
+ p(t)=\left\{
+     \begin{array}{lr}
+		p_1(t)\quad t\in [T_0,T_1] \\
+		p_2(t)\quad t\in(T_1,T_2] \\
+		\cdots \quad\quad\cdots\\
+		p_N(t)\quad t\in(T_{N-1},T_N]
+	\end{array}
+   \right.	\label{GatherAdjoint}
+\end{align}
+where the $p_i$'s are the solutions of the decomposed adjoint equations:
+\begin{align}
+E_{y_i}^i(y_i(t),v,\Lambda)^{*}p_i(t)=\frac{\partial}{\partial y_i}J_{\mu}(y_i,v,\Lambda), \quad t\in [T_{i-1},T_i]. \label{penalty adjoint}
+\end{align}
+\end{proposition}
+\begin{proof}
+Same reasoning as in proposition \ref{redGrad_prop}.
+\end{proof}
+\noindent
+Notice that the state equation $E(y(t),v,\Lambda)=0$ consists of several equations defined separately on each of the decomposed subintervals. The result is that the adjoint equation also consists of several equations defined on each interval. To see this clearly we will derive the adjoint and the gradient for the example problem (\ref{exs_J}-\ref{exs_E}).
+\subsection{Deriving the Adjoint for the Example Problem}
+Before we derive the adjoint equation of the decomposed example problem (\ref{exs_J}-\ref{exs_E}) we need to write up the decomposed state equation and the penalized objective function. We start by decomposing the interval $[0,T]$ into $N$ subintervals $\{[T_{i-1},T_{i}]\}_{i=1}^{N}$. We can then define the decomposed state equation on each interval:
+\begin{align}
+\left\{
+     \begin{array}{lr}
+       	\frac{\partial}{\partial t} y_i(t)=a y_i(t) + v(t) \quad t\in(T_{i-1},T_{i})\\
+       	y_i(T_{i-1})=\lambda_{i-1}
+     \end{array}
+   \right. \label{decomp_E}
+\end{align}
+We get the reduced penalized objective function by adding the the penalty terms to the unpenalized objective function (\ref{exs_J}):
+\begin{align}
+\hat J_{\mu}(v,\Lambda) = \frac{1}{2}\int_0^Tv(t)^2dt + \frac{\alpha}{2}(y(T)-y^T)^2 + \frac{\mu}{2}\sum_{i=1}^{N-1}(y_{i}(T_i)-\lambda_i)^2 \label{penalty_func}
+\end{align}
+Having formulated the penalized objective function, we are now ready to write up its gradient. The gradient of (\ref{penalty_func}) is given in proposition \ref{penGrad_prop}, but since the gradient depends on the decomposed adjoint equations, we write up these first.
+\begin{proposition} \label{pen_adjoint_prop}
+The decomposed adjoint equation of problem (\ref{exs_J}-\ref{exs_E}) on interval $[T_{N-1},T_N]$ is:
+\begin{align}
+\left\{
+     \begin{array}{lr}
+	-\frac{\partial }{\partial t}p_N =a p_N  \\
+	p_N(T_{N}) = \alpha( y_N(T_{N})-y_T)
+	\end{array}
+   \right. \label{end adjoint}
+\end{align}
+On $[T_{i-1},T_i]$ the decomposed adjoint equations are:
+\begin{align}
+\left\{
+     \begin{array}{lr}
+	-\frac{\partial }{\partial t}p_i =ap_i  \\
+	p_i(T_{i}) = \mu(y_{i}(T_{i})-\lambda_{i} )
+	\end{array}
+   \right. \label{exs_adjoint}
+\end{align}
+\end{proposition} 
+\begin{proof}
+The decomposed adjoint equation on interval $I_i= [T_{i-1},T_{i}]$ is defined by the equation $E^i_{y_i}(y_i,v,\Lambda)^*p_i=\frac{\partial}{\partial y_i}J_{\mu}(y_i,v,\Lambda)$. This means that to derive it, we need expressions for $E^i_{y_i}(y_i,v,\Lambda)^*$ and $\frac{\partial}{\partial y_i}J_{\mu}(y_i,v,\Lambda)$. We will use the same approach as in the proof of proposition \ref{adjoint_eq_prop}, meaning that we will use the weak formulation of the decomposed state equations to derive the adjoint. If we let $(\cdot,\cdot)_i$ denote the $L^2$ inner product on $(T_{i-1},T_i)$, we can define a bilinear form $\mathcal{E}^i$ as:
+\begin{align*}
+\mathcal{E}^i[y_i,\phi]=(y_i,(-\frac{\partial}{\partial t}-a+\delta_{T_i})\phi)_i - (v+\delta_{T_{i-1}}\lambda_{i-1},\phi)_i
+\end{align*}
+The weak formulation of the $i$-th state equation then reads:
+\begin{align*}
+\textrm{Find $y_i$ s.t.}\quad \mathcal{E}^i[y_i,\phi]=0 \quad \forall \phi\in C^{\infty}((T_{i-1},T_i)).
+\end{align*}
+Arguing similarly as we did in the proof of proposition \ref{adjoint_eq_prop}, we find the linearised adjoint of $\mathcal{E}^i$ to be:
+\begin{align*}
+\mathcal{E}_{y_i}^i[\cdot,\psi]^* = (\cdot,(\frac{\partial}{\partial t}-a+\delta_{T_{i-1}})\psi)_i
+\end{align*}
+The weak formulation of the $i$-th adjoint equation is then: Find $p_i$ such that $\mathcal{E}_{y_i}^i[p_i,\psi]^*=(\frac{\partial}{\partial y_i}J_{\mu}(y_i,v,\Lambda),\psi)_i$, $\forall\psi \in C^{\infty}$. If we can find an expression for $\frac{\partial}{\partial y_i}J_{\mu}$, we will have the weak adjoint equation. It turns out that we are able to decompose the penalized objective function into $N$ functions $J_{\mu}^i$ defined as:
+\begin{align*}
+J_{\mu}^i(y_i,v,\Lambda)& = \int_{T_{i-1}}^{T_i} v(t)^2 dt + \frac{\mu }{2}(y_i(T_i)-\lambda_i)^2, \quad \textrm{for }i=1,...,N-1,\ \textrm{and}\\
+J_{\mu}^N(y_N,v,\Lambda) &= \int_{T_{N-1}}^{T_N} v(t)^2 dt + \frac{\alpha }{2}(y_N(T_N)-y^T)^2.
+\end{align*}
+We notice that the the sum of these decomposed objective functions equals the penalized objective function (\ref{penalty_func}). What we also see is that $J_{\mu}^i$ only depends on the $i$-th state equation. This means that $\frac{\partial}{\partial y_i}J_{\mu}=\frac{\partial}{\partial y_i}J_{\mu}^i$.
+\begin{align*}
+\frac{\partial}{\partial y}J_{\mu}^i(y_i,v,\Lambda) &= \mu\delta_{T_i}(y_i(T_i)-\lambda_i),\quad i=1,..,N-1, and \\
+\frac{\partial}{\partial y}J_{\mu}^N(y_N,v,\Lambda) &= \delta_{T_N}\alpha(y_N(T_N)-y^T)
+\end{align*}
+For $i=1,...,N-1$, the weak formulation of the decomposed adjoint equations will look like:
+\begin{align*}
+\textrm{Find $p_i$ s.t.}\quad (p_i,(\frac{\partial}{\partial t}-a+\delta_{T_{i-1}})\psi)_i =(\mu\delta_{T_i}(y_i(T_i)-\lambda_i),\psi)_i \quad \forall \psi\in C^{\infty}((T_{i-1},T_i)).
+\end{align*}
+For $i=N$ the adjoint equation is almost identical to the above expression, with exception of the $(\mu\delta_{T_i}(y_i(T_i)-\lambda_i),\psi)_i$ term, which instead is replaced by $(\delta_{T_N}\alpha(y_N(T_N)-y^T),\psi)_i$. Using partial integration we can move the differentiation from $\psi$ to $p_i$. The adjoint equation on for $i=1,...,N-1$, is then: Find $p_i$ such that 
+\begin{align*}
+\int_{T_{i-1}}^{T_{i}} (-p_i'(t)-ap_i(t))\psi(t) dt +p_i(T_{i})\psi(T_{i}) = \mu( y_i(T_i)-\lambda_i)\psi(T_i) \quad \forall \psi\in C^{\infty}.
+\end{align*}
+Since we can vary $\psi$ arbitrarily, we recover the strong formulation stated in (\ref{exs_adjoint}).
+\end{proof}
+\noindent
+With the adjoint equations we can derive the gradient.
+\begin{proposition} \label{penGrad_prop}
+The gradient of (\ref{penalty_func}), $\hat J_{\mu}'$, with respect to the control $(v,\Lambda)$ is:
+\begin{align}
+\hat J_{\mu}'(v,\Lambda) = (v+p,p_{2}(T_1) -p_{1}(T_1),..., p_{N}(T_{N-1}) -p_{N}(T_{N-1})) \label{penalty grad}
+\end{align}
+\end{proposition}
+\begin{proof}
+Proposition \ref{penalty_grad_prop} states the gradient of the penalized objective function for a general decomposed problem in (\ref{pen_abs_grad}). To derive an expression for the gradient of our example problem, we need to differntiate the decomposed state equations and the penalized objective function with respect to the real and virtual control. We will again use the weak formulation of the state equation given in the proof of proposition \ref{pen_adjoint_prop} to find the different terms. The weak formulation of the $i$-th state equation is based on the bilinear form $\mathcal{E}^i[v,\phi]=(y_i,(-\frac{\partial}{\partial t}-a+\delta_{T_i})\phi)_i - (v+\delta_{T_{i-1}}\lambda_{i-1},\phi)_i$. Differentiating $\mathcal{E}^i$ with respect to the real and virtual control yields:
+\begin{align*}
+\mathcal{E}_v^i[\cdot,\phi] &= -(\cdot,\phi)_i, \quad i=1,...,N,\\
+\mathcal{E}_{\lambda_{i-1}}^i[\cdot,\phi] &= -(\cdot,\delta_{T_{i-1}}\phi)_i,\quad i=2,...,N.
+\end{align*}
+Notice that both of these forms are symmetric, and we therefore do not need to do more work to find their adjoints. The strong interpretation of $\mathcal{E}_v^i$ and $\mathcal{E}_{\lambda_{i-1}}^i$, is that $\mathcal{E}_v^i$ is multiplication by minus one, while $\mathcal{E}_{\lambda_{i-1}}^i$ is multiplication by minus one and evaluation at $t=T_{i-1}$. Next we want to differentiate the decomposed objective functions $J_{\mu}^i$ also defined in the proof of proposition \ref{pen_adjoint_prop}.
+\begin{align*}
+\frac{\partial}{\partial v} J_{\mu}^i(y,v,\Lambda) &= v,\quad i=1,...,N, \\
+\frac{\partial}{\partial \lambda_i}J_{\mu}^i(y,v,\Lambda) &= - \mu (y_{i}(T_i)-\lambda_i),\quad i=1,...,N-1.
+\end{align*}
+The last step of the proof is to insert the above derived expressions into formula (\ref{pen_abs_grad}). We separate the gradient into two parts, where the first part is the gradient with respect to the real control, while the second part are the components that depends on the virtual control. We start by stating $\frac{\partial}{\partial v} \hat J_{\mu}$:
+\begin{align*}
+\frac{\partial}{\partial v} \hat J_{\mu}(v,\Lambda) &= -E_v^*p +  \sum_{i=1}^N\frac{\partial}{\partial v} J_{\mu}^i(y_i,v,\Lambda) \\
+&=p+v
+\end{align*}
+We then find the component of the gradient related to $\lambda_i$. Only the $i+1$-th state equation and the $i$-th decomposed objective function depends on $\lambda_i$. This yields:
+\begin{align*}
+\frac{\partial}{\partial \lambda_i} \hat J_{\mu}(v,\Lambda) &= -E_{\lambda_i}^{i+1}(y_{i+1},v,\Lambda)^* p_{i+1} +  \frac{\partial}{\partial \lambda_i} J_{\mu}^i(y_i,v,\Lambda) \\
+&= p_{i+1}(T_i)-\mu (y_{i}(T_i)-\lambda_i)\\
+ &= p_{i+1}(T_i)-p_i(T_i)
+\end{align*}
+Here we made use of $E_{\lambda_i}^{i+1}(y_{i+1},v,\Lambda)^*=-1$ and $p_i(T_i)=\mu (y_{i}(T_i)-\lambda_i)$ from (\ref{exs_adjoint}). Combining $\frac{\partial}{\partial v} \hat J_{\mu}$ and $ \frac{\partial}{\partial \lambda_i}$ for $i=1,..,N-1$ gives us the gradient (\ref{penalty grad}).
+\end{proof} 
+\section{Parareal Preconditioner} \label{pc sec}
+Parallelizing the solution process of optimal control problems with time-dependent differential equation constraints comes down to minimizing a series of penalized objective functions. Since we have derived the gradient of these penalized objective functions for a specific example, we can now solve the control problem numerically using an optimization algorithm. We can for example use the steepest descent method (\ref{SD_itr}), which would create the following iteration for each penalized control problem:
+\begin{align}
+(v^{k+1},\Lambda^{k+1}) = (v^{k},\Lambda^{k}) -\rho_k\nabla\hat{J}_{\mu}(v^{k},\Lambda^{k}) \label{gradient_method}
+\end{align}
+Alternatively we could use a BFGS iteration (\ref{BFGS_itr}), which would result in the following update:
+\begin{align}
+(v^{k+1},\Lambda^{k+1}) = (v^{k},\Lambda^{k}) -\rho_kH^{k}\nabla\hat{J}_{\mu}(v^{k},\Lambda^{k}) \label{bfgs_method}
+\end{align}
+Where $H^k$ is the inverse Hessian approximation defined in (\ref{inv_H_apr}). To improve convergence of the unconstrained optimization solvers, we include the Parareal-based preconditioner, proposed in \cite{maday2002parareal}, in our optimization algorithms. Assuming that $v\in\mathbb{R}^{n_v}$, the preconditioner $Q$ will be on the form:
+\begin{align}
+Q = \left[ \begin{array}{cc}
+	\mathbbold{1} & 0 \\
+	0 & Q_{\Lambda} \\
+	\end{array} \right]\in \mathbb{R}^{n_v+N-1\times n_v+N-1},\quad Q_{\Lambda}\in\mathbb{R}^{N-1\times N-1} \label{PC_form}
+\end{align} 
+We see that $Q$ only affects the $N-1$ last components of the gradient, which is the part connected with the virtual control $\Lambda$. The real control $v$ is therefore not directly affected by $Q$. For steepest descent, we apply $Q$, by modifying (\ref{gradient_method}) in the following way:
+\begin{align}
+(v^{k+1},\Lambda^{k+1}) = (v^{k},\Lambda^{k}) -\rho_kQ\nabla\hat{J}_{\mu}(v^{k},\Lambda^{k}) \label{gradient_method2}
+\end{align}
+For us to expect any improvement in convergence for the preconditioned steepest descent, $Q$ would have to resemble the Hessian of $\hat{J}_{\mu}$, at least for the virtual part of the control. We also need $Q$ to be cheaply computable. Applying $Q$ to the BFGS iteration, is done by setting the initial Hessian approximation $H^0=Q$. To be able to do this, we need $Q$ to be symmetric positive definite, since that is a requirement on $H^0$. 
+\\
+\\
+We derive $Q$ by looking at a constructed optimal control problem that we call the virtual problem. The virtual problem is a control problem decomposed as detailed in section \ref{decomp_sec}, but its objective function $\bold J$ is set to be the penalty terms, which only depends on the virtual control $\Lambda$. We already stated this problem in section \ref{algebraic_sec}, and by utilizing the algebraic Parareal formulation, we will try to represent the equation $\hat {\bold J}'(\Lambda)=0$ with a system $\mathcal{A}\Lambda =R$, and then base $Q_{\Lambda}$ on an approximation of $\mathcal{ A}^{-1}$.
+\subsection{Virtual Problem} \label{vir_sec}
+The Parareal-based preconditioner only affects the part of the gradient connected to the virtual control $\Lambda$. To motivate and derive $Q$, we therefore consider an optimal control problem where the real control $v$ is removed, and the objective function only depends on $\Lambda$. We have already presented this problem in section \ref{algebraic_sec}, but we restate it here for future reference. However, before we do this let us first properly define the fine and coarse propagators.
+\begin{definition}[Fine and coarse propagator] \label{prop_def}
+Let $f(y(t),t)=0$ be a time-dependent differential equation. Given $\Delta T=\frac{T}{N}$ and an initial condition $\omega$, let $y_f$ and $y_c$ be a fine and a coarse numerical solution of the initial value problem:
+\begin{align}
+ \left\{
+     \begin{array}{lr}
+		f(y(t),t)=0 \ \quad \textrm{for $t \in (0,\Delta T)$} \\
+		y(0)=\omega
+	\end{array}
+	\right.	
+\end{align}
+We then define the fine propagator as $\bold F_{\Delta T}(\omega) = y_f(\Delta T)$ and the coarse propagator as $\bold G_{\Delta T}(\omega) = y_c(\Delta T)$. We also define the lower triangular matrices $M,\bar M\in\mathbb{R}^{N-1\times N-1}$ as: 
+\begin{align*}
+M= \left[ \begin{array}{cccc}
+   \mathbbold{1} & 0 & \cdots & 0 \\  
+   -\bold{F}_{\Delta T} & \mathbbold{1} & 0 & \cdots \\ 
+   0 &-\bold{F}_{\Delta T} & \mathbbold{1}  & \cdots \\
+   0 &\cdots &-\bold{F}_{\Delta T} & \mathbbold{1}  \\
+   \end{array}  \right],
+\bar M= \left[ \begin{array}{cccc}
+   \mathbbold{1} & 0 & \cdots & 0 \\  
+   -\bold{G}_{\Delta T} & \mathbbold{1} & 0 & \cdots \\ 
+   0 &-\bold{G}_{\Delta T} & \mathbbold{1}  & \cdots \\
+   0 &\cdots &-\bold{G}_{\Delta T} & \mathbbold{1}   \\
+   \end{array}  \right].
+\end{align*}
+\end{definition}
+\noindent
+We then use the fine propagator $\bold F_{\Delta T}(\omega)$ to define the virtual problem.
+\begin{definition}[Virtual problem]
+Given a fine propagator $\bold F_{\Delta T}$, that solves a time-dependent differential equation $f(y(t),t)=0$, an initial condition $\lambda_0=y_0$ and the control variable $\Lambda=(\lambda_1,...,\lambda_ {N-1})$, the virtual control problem is:
+\begin{align}
+&\min_{\Lambda}\bold{J}(\Lambda,y) = \frac{1}{2}\sum_{i=1}^{N-1} (y_{i-1}(T_{i})-\lambda_{i})^2, \label{virtual_func} \\
+&\textrm{subject to } \ y_{i-1}(T_{i}) = \bold F_{\Delta T}(\lambda_{i-1})\quad \textrm{for} \ i=1,...,N-1 \label{virtual}
+\end{align}
+We also recognize function (\ref{virtual_func}) as a least squares function, which we can express more compactly as:
+ \begin{align}
+\bold J(y,\Lambda) = \frac{1}{2} x(\Lambda)^Tx(\Lambda), \label{non_lin_LS}
+\end{align}
+where the vector function $x:\mathbb{R}^{N-1}\rightarrow \mathbb{R}^{N-1}$ is:
+\begin{align}
+x(\Lambda)=\left( \begin{array}{c}  
+   \lambda_1 - \bold F_{\Delta T}(\lambda_0) \\ 
+   \lambda_2 - \bold F_{\Delta T}(\lambda_1) \\
+   \cdots  \\
+   \lambda_{N-1} -\bold F_{\Delta T}(\lambda_{N-1}) \\
+   \end{array}  \right).
+\end{align}
+\end{definition}
+\noindent
+In chapter \ref{parareal_chap} we explained how the virtual problem could be solved by setting $\lambda_i= \bold F_{\Delta T}(\lambda_{i-1})$, which is the same as solving $\bold J(\Lambda,y)=0$. This equation can be written up on matrix form as:
+\begin{align}
+M \ \Lambda = H. \label{Parareal_equation}
+\end{align}
+The $H$ on the right hand side of the above equation is the propagator applied to the initial condition:
+\begin{align*}
+H = \left[ \begin{array}{c}
+   \bold F_{\Delta T}( y_0) \\
+   0 \\
+   \cdots \\
+   0 \\
+   \end{array}  \right].
+\end{align*}
+In section \ref{algebraic_sec} we mentioned that the Parareal algorithm could be reformulated as a preconditioned fix point iteration solving equation (\ref{Parareal_equation}). This can be expressed in matrix form as follows:
+\begin{align}
+\Lambda^{k+1} = \Lambda^k + \bar{M}^{-1}(H-M\Lambda^k),\label{par_mat_sys}
+\end{align}
+where $\bar{M}$ is the coarse version of the matrix $M$ stated in definition \ref{prop_def}. When we are solving the original optimal control problem we do not try to find a triple $(v,\Lambda,y)$ that solves $J_{\mu}(v,\Lambda,y)=0$. Instead we try to solve $\hat J_{\mu}'(v,\Lambda)=0$. To find the Parareal-based preconditioner, we therefore try to find a similar expression to (\ref{Parareal_equation}) for $\bold{\hat{J}}'(\Lambda)=0$. To be able to find this expression, we first need to define the coarse and fine adjoint propagators.
+\begin{definition}[Fine and coarse adjoint propagator] \label{adjoint_prop_def}
+Let $f(y(t),t)=0$ be a time-dependent differential equation. Given $\Delta T$, a state $y(t)$ and an initial condition $\omega$, let $p_f$ and $p_c$ be a fine and a coarse numerical solution of the initial value problem:
+\begin{align}
+ \left\{
+     \begin{array}{lr}
+		f'(y(t),t)^*p(t)=0 \ \quad \textrm{for $t \in (0,\Delta T)$} \\
+		p(\Delta T)=\omega
+	\end{array}
+	\right.	
+\end{align}
+We then define the fine adjoint propagator as $\bold F_{\Delta T}^*(\omega) = p_f(0)$ and the coarse adjoint propagator as $\bold G_{\Delta T}^*(\omega) = p_c(0)$. We also define adjoint versions of the matrices $M$ and $\bar M$ as: 
+\begin{align*}
+M^*= \left[ \begin{array}{cccc}
+   \mathbbold{1} & -\bold{F}_{\Delta T}^* & 0 & 0 \\  
+   0 & \mathbbold{1} & -\bold{F}_{\Delta T}^* & \cdots \\ 
+   \cdots &0 &  \mathbbold{1} & -\bold{F}_{\Delta T}^* \\
+   0 &\cdots &\cdots &  \mathbbold{1}  \\
+   \end{array}  \right],
+\bar M^*= \left[ \begin{array}{cccc}
+   \mathbbold{1} & -\bold{G}_{\Delta T}^* & 0 & 0 \\  
+   0 & \mathbbold{1} & -\bold{G}_{\Delta T}^* & \cdots \\ 
+   \cdots &0 &  \mathbbold{1} & -\bold{G}_{\Delta T}^* \\
+   0 &\cdots &\cdots &  \mathbbold{1}  \\
+   \end{array}  \right].
+\end{align*}
+\end{definition} 
+\noindent
+Using the matrices from definition \ref{adjoint_prop_def} we can write up the following proposition concerning the gradient of the reduced objective function of the virtual problem.
+\begin{proposition} \label{vir_grad_prop}
+The reduced objective function of the virtual problem (\ref{virtual_func}-\ref{virtual}) is:
+\begin{align}
+\bold{\hat J}(\Lambda) = \frac{1}{2}\sum_{i=1}^{N-1} (\bold F_{\Delta T}(\lambda_{i-1})-\lambda_{i})^2.\label{reduced_viritual}
+\end{align}
+Solving $\bold{\hat J}'(\Lambda)=0$ is equivalent to resolving the system:
+\begin{align}
+M^* \ M \ \Lambda \ = \ M^* \ H. \label{vir_grad_sys}
+\end{align}
+A preconditioned fix point iteration for equation (\ref{vir_grad_sys}) inspired by the Parareal formulation (\ref{par_mat_sys}) is therefore:
+\begin{align}
+\Lambda^{k+1} = \Lambda^k + \bar{M}^{-1}\bar M^{-*}(M^*H-M^*M\Lambda^k). \label{grad_fix_iter}
+\end{align}
+\end{proposition}
+\begin{proof}
+We have already derived the gradient of $\bold{\hat J}$ in (\ref{penalty grad}). There we stated the gradient for the penalized version of the example problem (\ref{exs_J}-\ref{exs_E}). If we ignore the part of this gradient related to the real control $v$, we get the following expression for $\bold{\hat J}'$:
+\begin{align*}
+\hat{\bold J}'(\Lambda) = \{p_{i+1}(T_i)-p_{i}(T_i)\}_{i=1}^{N-1}.
+\end{align*}
+Here $p_i$ refers to the decomposed adjoint equation on interval $[T_{i-1},T_{i}]$. We now want to show that setting $p_{i+1}(T_i)-p_{i}(T_i)=0$ for $i=1,...,N-1$ is equivalent to equation \ref{vir_grad_sys}. To do this we will simply write out the expression $M^*(M\Lambda-H)$ and show that it equals $\hat{\bold J}'(\Lambda)$. We start with $M\Lambda-H$.
+\begin{align*}
+M \ \Lambda - H  = \left( \begin{array}{c}
+	\lambda_1-\bold{F}_{\Delta T}(\lambda_0)\\
+	\lambda_2-\bold{F}_{\Delta T}(\lambda_1) \\
+	\cdots \\
+	\lambda_{N-1}-\bold{F}_{\Delta T}(\lambda_{N-1}) 
+	\end{array} \right).
+\end{align*}
+Notice that $\bold{F}_{\Delta T}(\lambda_{i-1})-\lambda_i$ is the initial condition of $i$-th adjoint equation, i.e. $p_i(T_i)=\bold{F}_{\Delta T}(\lambda_{i-1})-\lambda_i$. By exploiting this, and multiplying $M\Lambda-H$ with $M^*$ we get:
+\begin{align}
+M^* (M \ \Lambda-H)&=
+	\left( \begin{array}{c}
+	 \bold{F}_{\Delta T}^*(p_2( T_2))-p_1(T_1)\\
+	\bold{F}_{\Delta T}^*(p_3( T_3))-p_2(T_2)\\
+	\cdots \\
+	-p_{N-1}(T_{N-1})
+	\end{array} \right)
+	\\
+	&=\left( \begin{array}{c}
+	p_2(T_1)-p_1(T_1)\\
+	p_3(T_2)-p_2(T_2)\\
+	\cdots \\
+	p_{N-1}(T_{N-2})-p_{N-2}(T_{N-2}) \\
+	-p_{N-1}(T_{N-1})
+	\end{array} \right).
+\end{align}
+The last step is done by using $p_i(T_{i-1})=-F_{\Delta T}^*(-p_i(T_i))$, and this is possible since the adjoint equation is linear. We see that the $i$-th component of $M^* (M \Lambda-H)$ is equal to $p_{i+1}(T_i)-p_{i}(T_i)$ for $i\neq N-1$. The last component of $M^* (M \Lambda-H)$ is $-p_{N-1}(T_{N-1})$, and we are therefore missing $p_N(T_{N-1})$. This is however unproblematic since in context of the the virtual problem $p_N(T_{N-1})=0$. This shows us that $\hat{\bold J}'(\Lambda)= M^* (M \Lambda-H)$, which means that $\hat{\bold J}'(\Lambda)=0 \iff M^*M\Lambda =M^*H$. Since $\bar M$ and $\bar M^*$ approximates $M$ and $M^*$, $\bar{M}^{-1}\bar M^{-*}$ would be a natural preconditioner for a fix point iteration solving $M^*M\Lambda =M^*H$. 
+\end{proof}
+\noindent
+Proposition \ref{vir_grad_prop} motivates $Q_{\Lambda}=\bar{M}^{-1}\bar M^{-*}$ as a preconditioner for solvers of decomposed and penalized optimal control problems, and this is actually the Parareal-based preconditioner proposed in \cite{maday2002parareal}. Inserting $Q_{\Lambda}$ into $Q$ yields the following:
+\begin{align}
+Q = \left[ \begin{array}{cc}
+	\mathbbold{1} & 0 \\
+	0 &  \bar{M}^{-1}\bar{M}^{-*}\\
+	\end{array} \right]. \label{Q_PC}
+\end{align}  
+In \cite{maday2002parareal} $Q$ is proposed as a preconditioner for a steepest descent method. Other than to motivate $Q$ the authors of \cite{maday2002parareal} do not explore or derive any properties of the Parareal-based preconditioner. We are however interested in using $Q$ in combination with the BFGS algorithm, and to be able to do this we need to know that $Q$ is positive definite and that it is related to the Hessian of the objective function. We are also interested in the computational cost of $Q$. We will investigate the properties of the preconditioner by looking at the least squares formulation (\ref{non_lin_LS}) of problem (\ref{reduced_viritual}).
+\subsection{Properties of the Parareal-Based Preconditioner}
+We want to investigate the properties of $Q_{\Lambda}=\bar{M}^{-1}\bar{M}^{-*}$, and to do this we will show that $\bar{M}^{1}\bar{M}^{*}$ is an approximation to the Hessian of $\hat{\bold J}(\Lambda)$. To calculate the Hessian we use the least squares formulation (\ref{non_lin_LS}) of the virtual objective function. 
+\begin{proposition}[Virtual Hessian]\label{NonLin_prop}
+The Hessian of function (\ref{non_lin_LS}) is
+\begin{align*}
+\nabla^2 \hat{\bold J}(\Lambda) &= \nabla x^T\nabla x + \sum_{i=1}^{N-1} \nabla^2 x_i(\Lambda) x_i(\Lambda)\\
+&=M(\Lambda)^TM(\Lambda) + D(\Lambda)
+\end{align*}
+Here $D(\Lambda)$ is a diagonal matrix with diagonal entries 
+\begin{align*}
+D_i=-\bold{F}_{\Delta T}''(\lambda_i)(\lambda_{i+1}-\bold F_{\Delta T}(\lambda_i)) \quad i=1,...,N-1,
+\end{align*}
+while $M(\Lambda)$ is the linearised forward model:
+\begin{align*}
+M(\Lambda) &= \left[ \begin{array}{cccc}
+   \mathbbold{1} & 0 & \cdots & 0 \\  
+   -\bold{F}_{\Delta T}'(\lambda_{1}) & \mathbbold{1} & 0 & \cdots \\ 
+   0 &-\bold{F}_{\Delta T}'(\lambda_{2}) & \mathbbold{1}  & \cdots \\
+   0 &\cdots &-\bold{F}_{\Delta T}'(\lambda_{N-1}) & \mathbbold{1}  \\
+   \end{array}  \right]
+\end{align*}	
+\end{proposition}
+\begin{proof}
+We start by differentiating $\hat{\bold J}$:
+\begin{align*}
+\nabla \hat{\bold J}(\Lambda) &=  \nabla x(\Lambda)^T x(\Lambda)\\
+&=\sum_{i=1}^{N-1} \nabla x_i(\Lambda) x_i(\Lambda)
+\end{align*}
+If we now differentiate $\nabla \hat{\bold J}$, we get:
+\begin{align*}
+\nabla^2 \hat{\bold J}(\Lambda) &= \nabla x^T\nabla x + \sum_{i=1}^{N-1} \nabla^2 x_i(\Lambda) x_i(\Lambda)
+\end{align*}
+We see that $\nabla x(\Lambda)=M(\Lambda)$, by looking at $\frac{\partial x_i}{\partial \lambda_j}$
+\begin{align*}
+\frac{\partial x_i}{\partial \lambda_j} = \left\{
+     \begin{array}{lr}
+		1 \quad\quad\quad\quad\quad i=j\\
+		-\bold F_{\Delta T}'(\lambda_{j}) \quad i>1 \wedge j=i-1 \\
+		0 \quad\quad\quad\quad\quad i\neq j \vee j\neq i-1
+	\end{array}
+   \right.	
+\end{align*}
+We can similarly find $\nabla^2 x_i$ by differentiating $x$ twice:
+\begin{align*}
+\frac{\partial^2 x_i}{\partial \lambda_j\partial\lambda_k} = \left\{
+     \begin{array}{lr}
+		-\bold F_{\Delta T}''(\lambda_{j}) \quad i>1 \wedge j=k=i-1 \\
+		0 \quad\textrm{in all other cases}
+	\end{array}
+   \right.	
+\end{align*}
+Summing up the terms $\nabla^2 x_i(\Lambda)x_i(\Lambda)$ yields the diagonal matrix $D(\Lambda)$.
+\end{proof}
+\noindent
+The first term of $\nabla^2 \hat{\bold J}(\Lambda)=M(\Lambda)^TM(\Lambda) + D(\Lambda)$ resembles $M^*M$ from the previous section, while the second term $D(\Lambda)$ is new. $D(\Lambda)$ is a diagonal matrix where the diagonal entries consists of products between the second derivative of $\bold F_ {\Delta T}$ and the residuals $\lambda_{i+1}-\bold F_{\Delta T}(\lambda_i)$. If the governing equation of the propagator $\bold F_ {\Delta T}$ is linear, $\bold F_{\Delta T}''(\lambda_i)=0$. This would again mean that $D(\Lambda)=0$ and that $\nabla^2 \hat{\bold J}(\Lambda)=M(\Lambda)^TM(\Lambda)$. We will therefore split our discussion of the Hessian of $\hat{\bold J}$ into two cases. In the first we assume the state equation is linear, while in the second case we discuss problems with non-linear state equations.
+\subsubsection{Linear State Equations}
+Assuming that the state equation is linear means that $\nabla^2 \hat{\bold J}(\Lambda)=M(\Lambda)^TM(\Lambda)$. Differentiating the propagator $\bold F_{\Delta T}$ is the same as linearising its governing equation. When the governing equation is itself linear and homogeneous, linearising it does not change the equation, and $\bold F_{\Delta T}'(\lambda_i)\lambda_i = \bold F_{\Delta T}(\lambda_i)$. This means that the $M$ matrix from section \ref{vir_sec} is equal to $M(\Lambda)$. The same is true for $M^*$ and $M(\Lambda)^T$. Since  $\nabla^2 \hat{\bold J}(\Lambda)=M^*M$ we see that the Parareal-based preconditioner proposed in \cite{maday2002parareal} is in fact related to the inverse Hessian of the reduced penalized objective function. Furthermore if we can show that $\bar M^*\bar M$ is a positive definite matrix, we can use $Q$ as an initial approximation of the inverse Hessian in the BFGS optimization algorithm. This is as we will see in the following proposition indeed the case.
+\begin{proposition} \label{pos_def_prop}
+If $\bold G_{\Delta T}$ and $\bold G_{\Delta T}^*$ are based on consistent numerical methods, that is $\bar M^*=\bar M^T$, then the matrix $\bar M^*\bar M$ is positive definite.
+\end{proposition}
+\begin{proof}
+If $\bold G_{\Delta T}$ and $\bold G_{\Delta T}^*$ are based on consistent numerical methods equal, meaning that $\bold G_{\Delta T}(\omega)=\bold G_{\Delta T}^*(\omega)$. When inserting this into the matrices $\bar M$ and $\bar M^*$ from definition \ref{prop_def} and \ref{adjoint_prop_def}, we clearly see that $\bar M^*=\bar M^T$. For $M^*M$ to be positive definite, the following two conditions must hold:
+\begin{align*}
+&1.\quad x^T\bar M^*\bar Mx \geq 0 \quad \forall x\in\mathbb{R}^{N-1} \\
+&2.\quad x^T\bar M^*\bar Mx =0 \iff x=0
+\end{align*}
+The first condition hold due to $\bar M^*=\bar M^T$:
+\begin{align*}
+x^T\bar M^*\bar Mx = (\bar Mx)^T\bar Mx = ||Mx||^2 \geq 0.
+\end{align*}
+The second condition hold if $\bar M$ is invertible. This is true because $\bar M$ is a triangular matrix, with identity on its diagonal, and therefore has a determinant equal to 1. The determinant of a matrix being unequal to zero is equivalent with it being invertible, which means that $\bar M$ is invertible. This also means that $M^*M$ is positive definite, since both requirements for positive definiteness are satisfied. 
+\end{proof}
+\noindent
+Proposition \ref{pos_def_prop} shows that the $\bar M^*\bar M$ matrix stemming from the virtual problem is positive definite. We can therefore use it as an initial Hessian approximation in the BFGS algorithm, at least as long as $\bold G_ {\Delta T}$ and $\bold G_ {\Delta T}^*$ are consistent. Now let us take a look at the case where the governing equation of $\bold F_{\Delta T}$ is non-linear.
+\subsubsection{Non-Linear State Equations}
+Unlike the Hessian of the linear problem the Hessian of the non-linear problem consists of two parts. One is the linearised forward model multiplied with its adjoint, while the second part is a diagonal matrix related to the second derivative of the propagator $\bold F_{\Delta T}$, and the residuals $\lambda_i-\bold F_{\Delta T}$. The first part of $\nabla^2 \bold{\hat{J}}$ is analogue to the Hessian of the linear problem. It is symmetric positive definite, and taking its inverse corresponds to first applying the backwards model, and then the forward model. What makes the Hessian of the non-linear problematic is therefore its second term. The first issue with the diagonal matrix $D(\Lambda)$, is how to calculate $\bold F_{\Delta T}''$. Another issue is that we can not guarantee that the sum of $M(\Lambda)^TM(\Lambda)$ and $D(\Lambda)$ is a positive matrix, and the same problem would arise in a coarse approximation of $\nabla^2 \bold{\hat{J}}$. The lack of positivity is a problem since we want to use the coarse approximation as an initial inverted Hessian approximation in the BFGS-algorithm.
+\\
+\\
+One way to get around the $D(\Lambda)$ term in the Hessian for a non-linearly constrained problem, is simply to ignore it. This leaves us with the $M(\Lambda)^TM(\Lambda)$ term, which we know how to deal with. Ignoring the term depending on the second derivative and the residual is actually a known strategy, called the Gauss-Newton method, for solving non-linear least square problems. Details on this method can be found in \cite{nocedal2006numerical}. A justification for this approach, is that at least in instances where we are close to a solution, the $\lambda_i-\bold F_{\Delta T}$ terms will be close to zero, and the $M(\Lambda)^TM(\Lambda)$ term will therefore dominate the Hessian. Ignoring the $D(\Lambda)$ term means that we can define an inverse Hessian approximation based on a coarse propagator $\bold G_{\Delta T}$ in the same way as we did for the problem with linear state equation constraints. This means that we define a matrix $\bar M(\Lambda)$:
+\begin{align}
+\bar M(\Lambda) &= \left[ \begin{array}{cccc}
+   \mathbbold{1} & 0 & \cdots & 0 \\  
+   -\bold{G}_{\Delta T}'(\lambda_{1}) & \mathbbold{1} & 0 & \cdots \\ 
+   0 &-\bold{G}_{\Delta T}'(\lambda_{2}) & \mathbbold{1}  & \cdots \\
+   0 &\cdots &-\bold{G}_{\Delta T}'(\lambda_{N-1}) & \mathbbold{1}  \\
+   \end{array}  \right] \label{ppc_linearized}
+\end{align}
+The term $\bar{M}(\Lambda)^{-1}\bar{M}(\Lambda)^{-*}$ can then be used in an approximation of the inverse Hessian, as detailed in section \ref{vir_sec}.
+\subsection{Parareal-Based Precoditioner for the Example Problem}
+To illustrate what $Q$ actually will look like we write up $\bar M^*\bar M$ for our example problem (\ref{exs_J}-\ref{exs_E}). The state equation of this problem is:
+\begin{align}
+f(y(t),t)=y'(t) - ay(t) - v(t)=0, \label{ppc_state} 
+\end{align}
+If we linearise $f$, the source term $v$ disappears, and the state equation becomes homogeneous. We then base the coarse propagators $\bold G_{\Delta T}$ and $\bold G_{\Delta T}^*$ on the linearised state equation and its adjoint:
+\begin{align}
+y'(t) &= ay(t), \label{lier_S}\\
+p'(t)&=-ap(t). \label{liner_A}
+\end{align}
+Let us now try to write out $\bar M^*\bar M$ for our example problem, when we have decomposed the time interval into $N$ subintervals. We first need to choose a numerical method to discretize the linearised state equation (\ref{lier_S}) and the adjoint equation (\ref{liner_A}). In this example we will use the implicit Euler scheme from section \ref{FD_sub_sec}, with $\Delta T=\frac{T}{N}$. We can then write up $\bold G_{\Delta T}(\omega)$ and $\bold G_{\Delta T}^*(\omega)$:
+\begin{align}
+\frac{\bold G_{\Delta T}(\omega)-\omega}{\Delta T}&=  a\bold G_{\Delta T}(\omega) \\
+&\Rightarrow \bold G_{\Delta T}(\omega)= \frac{\omega}{1-a\Delta T} \\
+\frac{\omega-\bold G_{\Delta T}^*(\omega)}{\Delta T}&= -a\Delta T \bold G_{\Delta T}^*(\omega) \\
+&\Rightarrow \bold G_{\Delta T}^*(\omega)= \frac{\omega}{1-a\Delta T} \label{ImplicitEG}
+\end{align}
+Since $\bold G_{\Delta T}(\omega)= \bold G_{\Delta T}^*(\omega)$, using implicit Euler both forwards and backwards produce consistent coarse propagators. We can now write up an exact expression for $\bar M\in\mathbb{R}^{N-1\times N-1}$. 
+\begin{align*}
+\bar M = \left[ \begin{array}{cccc}
+   	1 & 0 & \cdots & 0 \\  
+   	-\frac{1}{1-a\Delta T} & 1 & 0 & \cdots \\ 
+   	0 &-\frac{1}{1-a\Delta T} & 1  & \cdots \\
+   	0 &\cdots &-\frac{1}{1-a\Delta T} & 1  \\
+  	\end{array}  \right].
+\end{align*}
+By traversing $\bar M$ we get $\bar M^*$. When we apply $Q$, we are not using $\bar M^*\bar M$, but instead its inverse. Let us illustrate how to apply the inverse of $\bar M^*\bar M$ to the virtual gradient through an example, wehere we set $N=4$. We first decompose $I=[0,T]$ into four sub-intervals $[T_0,T_1], [T_1,T_2], [T_2,T_3]$ and $[T_3,T_4]$. If we then evaluate the discrete gradient for a real control variable $v\in\mathbb{R}^{n+1}$ and a virtual control $\Lambda =(\lambda_1,\lambda_2,\lambda_3)$, the result is $\hat J_{\mu}(v,\Lambda)\in\mathbb{R}^{N+n}$. Multiplying $Q$ with $\hat J_{\mu}(v,\Lambda)$ will only affect its three last components, which we name $J_{\lambda_1},J_{\lambda_2}$ and $J_{\lambda_3}$. Applying $Q$ to $\hat J_{\mu}$ is done in two steps. We first multiply with $\bar M^{-*}$ based on on the propagator $\bold G_{\Delta T}^*= -\frac{1}{1-a\Delta T} $ 
+\begin{align*}
+\bar{J_{\lambda_1}} &=J_{\lambda_1} -\frac{1}{1-a\Delta T}(J_{\lambda_2} -\frac{1}{1-a\Delta T}J_{\lambda_3})\\
+\bar{J_{\lambda_2}} &=J_{\lambda_2} -\frac{1}{1-a\Delta T}J_{\lambda_3}\\
+\bar{J_{\lambda_3}} &=J_{\lambda_3} 
+\end{align*} 
+The second step is then to apply the forward system based on the coarse propagator $\bold G_{\Delta T}= -\frac{1}{1-a\Delta T} $:
+\begin{align*}
+\bar{\bar{J_{\lambda_1}}}&=\bar{J_{\lambda_1}} \\
+\bar{\bar{J_{\lambda_2}}}&=\bar{J_{\lambda_2}}-\frac{1}{1-a\Delta T}\bar{J_{\lambda_1}} \\
+\bar{\bar{J_{\lambda_3}}}&=\bar{J_{\lambda_3}} -\frac{1}{1-a\Delta T}(\bar{J_{\lambda_2}}-\frac{1}{1-a\Delta T}\bar{J_{\lambda_1}})
+\end{align*} 
+The result of multiplying $Q$ with the discrete penalized gradient is that the three last components of $\hat J_{\mu}(v,\Lambda)$ is changed to $\bar{\bar{J_{\lambda_1}}},\bar{\bar{J_{\lambda_2}}}$ and $\bar{\bar{J_{\lambda_3}}}$. 
+\\
+\\
+an important special case of the Parareal-based preconditioner is the case when $N=2$. If we decompose the time domain into $N=2$ subdomains, both $\bar M$ and $\bar M^*$ becomes the identity matrix. This means that for $N=2$, $Q=\mathbbold{1}$, and therefore $Q$ has no effect. Since the preconditioner has no effect for $N=2$, we might also expect that for "small" $N$ the impact of applying $Q$ to the penalized gradient is only modest, and that the usefulness of $Q$ only materializes for higher values of decomposed subintervals $N$.
+\subsubsection{Computational Cost of Parareal-Based Preconditioner}
+The last aspect of the preconditioner $Q$ (\ref{Q_PC}), that we have yet not discussed is its computational cost. For $Q$ to be an effective preconditioner it needs to be cheap to compute. As the above example for $N=4$ shows, applying $Q_{\Lambda}$ to the virtual part of the gradient $\hat J_{\mu}'(v,\Lambda)$, comes down to first solving the linearised backward model, and then the linearised forward model on mesh of size $N$. This will translate to a computational cost of $\mathcal{O}(N)$. Here we have of course assumed that the state and adjoint equations are ODEs, and that the coarse propagator $\bold G_{\Delta T}$ is based on a finite difference scheme as in (\ref{ImplicitEG}). If we we instead were solving a PDE, the cost of applying $Q$ would also include computations done in spatial direction. If the spatial discretization has size $\mathcal{M}$, the cost of $Q$ would instead be $\mathcal{O}(\mathcal{M}N)$, but this could again be made cheaper by using a coarse resolution in space for $\bold G_{\Delta T}$. 
+\\
+\\
+For $\mathcal{O}(N)$ to be considered a cheap operation, we require $N<<n$, where $n$ is the number of fine time steps. Since $N$ is the number of decomposed subintervals, $N$ does also equal the maximal number of processes that can be used to parallelize in time. If we want to increase the number of processes, we also need to increase $N$. This creates an upper limit for the scalability of our algorithm, when we use the Parareal-based preconditioner. For a fixed problem size $n$, the absolute upper limit of processes that can be used is $N=n$, but since we need a cheap to compute $Q$, this limit is in practice lower.  
+\section{Summary and Presentation of Algorithm} \label{Algorithm_sec}
+In the previous section we presented and derived properties of the Parareal-based preconditioner $Q$ introduced in \cite{maday2002parareal}. We showed that $Q$ is symmetric positive definite, and that it approximates the inverse Hessian of $\hat J_{\mu}$, at least for the part connected to the virtual control. We can therefore use $Q$ as an initial inverted Hessian approximation in the BFGS or L-BFGS optimization algorithms for minimization of the penalized objective function $\hat J_{\mu}(v,\Lambda)$ (\ref{constrained reduced j}). Combining the preconditioned BFGS solver with the quadratic penalty method of algorithm \ref{PEN_ALG} makes us able to propose algorithm \ref{PPC_PEN_ALG} as a parallel in time method for solving optimization problems with time-dependent DE constraints.
+\\
+\\
+In algorithm \ref{PPC_PEN_ALG} we use the Parareal-based preconditioner $Q$, but an unpreconditioned version of algorithm \ref{PPC_PEN_ALG} would also be able to solve problem (\ref{constrained reduced j}). When we investigate the performance of our Parareal-preconditioned method we will compare it with the unpreconditioned algorithm.
+\\
+\\
+\begin{algorithm}[H] 
+\KwData{Choose $\mu_0,\tau_0>0$, and some initial control $(v^0,\Lambda^0$)}
+\For{$k=1,2,...$}{
+$(v_0^k,\Lambda_0^k) \leftarrow (v^{k-1},\Lambda^{k-1})$\;
+$H^0 \leftarrow Q(\Lambda_0^{k})$\;
+\While{$||\hat J'_{\mu_{k-1}}(v_j^k,\Lambda_j^k)||\geq \tau_{k-1}$ }{
+$(v_{j+1}^k,\Lambda_{j+1}^k) \leftarrow (v_j^k,\Lambda_j^k) - \rho^j H^j \hat J'_{\mu_{k-1}}(v_j^k,\Lambda_j^k) $\tcp*[h]{In parallel}\;
+Update $H^{j+1}$\;
+$H^0 \leftarrow Q(\Lambda_{j+1}^k)$\;
+}
+$(v^{k},\Lambda^{k})\leftarrow(v_{j}^k,\Lambda_{j}^k)$\;
+\eIf{STOP CRITERION on $(v^{k},\Lambda^{k})$ satisfied}{
+$\bold{Stop}$ algorithm\;
+}{
+Choose new $\tau_k\in(0,\tau_{k-1})$ and $\mu_k\in(\mu_{k-1},\infty) $\;
+}
+}
+\caption{Quadratic penalty method with preconditioned BFGS optimization\label{PPC_PEN_ALG}}
+\end{algorithm}
+\noindent
+\\
+What separates algorithm \ref{PPC_PEN_ALG} from the general quadratic penalty method in algorithm \ref{PEN_ALG} is that the optimization step is done using BFGS (or L-BFGS) with $H^0=Q$. The most computationally costly part of algorithm \ref{PPC_PEN_ALG}, is the optimization step of the BFGS algorithm:
+\begin{align}
+(v_{j+1},\Lambda_{j+1}) = (v_j,\Lambda_j) - \rho^j H^j \hat J'_{\mu}(v_j,\Lambda_j) \label{BFGSupdate}
+\end{align}
+In section \ref{optiSec} we explained how general line search methods are applied, and also how one updates the inverse Hessian approximation in the BFGS and L-BFGS algorithms. Let us however briefly discuss how the update (\ref{BFGSupdate}) is done in context of the  minimization of our decomposed and penalized objective function (\ref{general_opti_pen}). Executing update (\ref{BFGSupdate}) is done in four steps:
+\begin{align*}
+1.\quad&\textit{Evaluate $\hat J'_{\mu}(v_j,\Lambda_j)$.} \\
+2.\quad&\textit{Apply $H^j$ to $\hat J'_{\mu}(v_j,\Lambda_j)$.}\\
+3.\quad&\textit{Find step length $\rho^j$} \\
+4.\quad&\textit{Set $(v_{j+1},\Lambda_{j+1}) = (v_j,\Lambda_j) - \rho^j H^j \hat J'_{\mu}(v_j,\Lambda_j)$} 
+\end{align*}
+The first step of the above procedure, is to evaluate the gradient of $\hat J_{\mu}$. We know from proposition \ref{penalty_grad_prop}, that this requires us to first solve the decomposed state equations, and then the decomposed adjoint equations. We can solve the decomposed state equations and then the decomposed adjoint equations in parallel, since they are defined independently of each other on the decomposed subintervals. Applying $H^j$ to $\hat J'_{\mu}(v_j,\Lambda_j)$ is done using the recursive formula defining the $H^j$ update:
+\begin{align}
+H^j \hat J_{\mu} = (\mathbbold{1}-\rho_{j-1}S_{j-1}\cdot Y_{j-1})H^{j-1}(\mathbbold{1} -\rho_{j-1}Y_{j-1}\cdot S_{j-1})\hat J_{\mu} + S_{j-1}\cdot S_{j-1}\hat J_{\mu} \label{RecH}
+\end{align}
+$Y,S\in\mathbb{R}^{n+N}$ are vectors based on previous iterates, that we defined in section \ref{optiSec}. The point of evaluating $H^j \hat J_{\mu}$ recursively as in (\ref{RecH}), is that we do not need to build the full matrix $H^j$. An important thing about formula (\ref{RecH}), is that it is solely made up of dot products, vector subtraction, vector addition and scalar products, all of which are perfectly parallelizable operations \cite{grama2003introduction}. With the exception of the initial inverted Hessian approximation $H^0=Q$, which we assume is computationally cheap relative to a state equation solve, applying $H^j$ to the gradient of $\hat J_{\mu}$ can be done completely in parallel. 
+\\
+\\
+The third step of the BFGS update is to find a step length $\rho^j$, that satisfies the Wolfe conditions (\ref{wolf1}-\ref{wolf2}). We will not explain how to find $\rho^j$ here, however, what we can say, is that calculating the step length requires at least one evaluation of $\hat J_{\mu}$ and one of $\hat J_{\mu}'$. This means that finding $\rho^j$ is a computationally costly procedure, but since evaluating $\hat J_{\mu}$ and $\hat J_{\mu}'$ boils down to solving the state and adjoint equations, finding $\rho^j$ is also a perfectly parallelizable process. The fourth and last step of the BFGS update , is to update $(v_{j+1},\Lambda_{j+1})$ using formula (\ref{BFGSupdate}). This is a very simple step involving only scalar multiplication and vector subtraction, and can of course be executed in parallel.
+\\
+\\
+How to update the penalty parameter $\mu_k$ and tolerance $\tau_k$, as well as how to choose an adequate stopping criteria, are all aspects of algorithm \ref{PPC_PEN_ALG}, that require consideration. We will however not look into these questions in this thesis, and when we test out the method in algorithm \ref{PPC_PEN_ALG} in chapter \ref{Experiments chapter}, we will in all experiments use one penalty iteration with a large penalty parameter $\mu$. We found that this strategy worked reasonably well for the example problem, while also being sufficient for demonstrating the method. Strategies for updating the $\mu$ and $\tau$ variables can be found in \cite{nocedal2006numerical}, but there does not seem to be a general approach that fits every type of problem.

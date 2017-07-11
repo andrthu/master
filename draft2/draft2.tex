@@ -1,0 +1,79 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+ 
+\usepackage{cite}
+
+
+\newtheorem{theorem}{Theorem}
+
+\usepackage{listings}
+\usepackage{color} %red, green, blue, yellow, cyan, magenta, black, white
+\definecolor{mygreen}{RGB}{28,172,0} % color values Red, Green, Blue
+\definecolor{mylilas}{RGB}{170,55,241}
+
+
+\usepackage{graphicx}
+\date{\today}
+\title{Optimal control with DE constraints}
+
+
+
+\begin{document}
+\maketitle
+\tableofcontents{}
+
+\section{Introduction}
+\subsection{Optimal control with DE constraints}
+\subsubsection{General optimal control problem}
+In this thesis we are only looking at optimal control problems with time-dependent differential equation constraints. This problem is only a part of the more general control problem, which can be formulated as:
+\begin{align}
+\underset{y\in Y,v\in V}{\text{min}} \ &J(y,v) \\
+\textit{Subject to:} \ &E(y,v)=0
+\end{align}
+Here $J: Y\times V\rightarrow\Re$ is the objective function that we want to minimize, while $E:Y\times V \rightarrow Z$, is an operator such that $\forall v \in V$, $\exists! y(v)\in Y$ that satisfies the state equation:
+\begin{align*}
+E(y(v),v)=0
+\end{align*}
+Replacing $y$ with $y(v)$ allows us to define the reduced problem:
+\begin{align}
+\underset{v\in V}{\text{min}} \ \hat J(v)=\underset{v\in V}{\text{min}} \ J(y(v),v) \ \textit{Subject to:} \ E(y(v),v)=0 \label{reduced problem}
+\end{align}
+To find a solution to (\ref{reduced problem}), we need to be able to differentiate the objective function $\hat{J}$ with respect to the control $v$. There are different ways of doing that, but I will focus on the so called adjoint approach, which is the most computational effective way of calculating the gradient of $\hat{J}$.
+\subsubsection{The adjoint equation and the gradient}
+To find the gradient $\hat{J}'(v)$, lets start by differentiating $\hat J$:
+\begin{align*}
+\hat{J}'(v) = DJ(y(v),v) = y'(v)^*J_y(y(v),v) + J_v(y(v),v)
+\end{align*}
+The problematic term in the above expression, is $y'(v)^*$. To calcualte this we need to differentiate the state equation:
+\begin{align*}
+DE(y(v),v)=0 &\Rightarrow E_y(y(v),v)y'(v)=-E_v(y(v),v) \\ &\Rightarrow y'(v)=-E_y(y(v),v)^{-1}E_v(y(v),v) \\ &\Rightarrow y'(v)^* = -E_v(y(v),v)^*E_y(y(v),v)^{-*}
+\end{align*}
+Instead of inserting $y'(v)^* = -E_v(y(v),v)^*E_y(y(v),v)^{-*}$ into our gradient expression, we first define the adjoint equation as:
+\begin{align}
+E_y(y(v),v)^{*}p=J_y(v) \label{general adjoint}
+\end{align}
+This now allows us to write up the gradient as follows:
+\begin{align}
+\hat{J}'(v)&= y'(v)^*J_y(y(v),v) + J_v(y(v),v)\\
+&=-E_v(y(v),v)^*E_y(y(v),v)^{-*}J_y(y(v),v) + J_v(y(v),v) \\
+&= -E_v(y(v),v)^*p +J_v(y(v),v) \label{gradient}
+\end{align}
+Evaluating the gradient for a control variable $v\in V$ typically requires us to solve both the state and adjoint equation, and then inserting the solutions into the expression for the gradient.
+\subsubsection{Time dependent differential equations}
+The time dependent differential equation constraints that I will use will generally be on the form:
+\begin{align}
+\left\{
+     \begin{array}{lr}
+       	\frac{\partial }{\partial t}y+Ay = Bv\\
+       	   y(0)=y_0
+     \end{array}
+   \right.
+\end{align}
+\end{document}

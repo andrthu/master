@@ -1,0 +1,31 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.integrate import trapz
+
+def implicit_solver(y0,a,dt,N,f=None):
+    """
+    Solves the equation y'-ay = f y(0)=y0 using implicit euler
+    and N steps of timestep dt 
+    """
+    
+    y = np.zeros(N+1)
+    y[0] = y0
+
+    if f==None:
+        f = np.zeros(N+1)
+
+    for i in range(N):
+        y[i+1] = (y[i] +dt*f[i+1])/(dt*a+1)
+
+    return y
+
+if __name__ == '__main__':
+    N = 100
+    T = 1.
+    dt = T/N
+    y0 = 1
+    a = 2
+    t = np.linspace(0,T,N+1)
+    f = np.sin(2*np.pi*t)
+
+    y = implicit_solver(y0,a,dt,N,f=f)

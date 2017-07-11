@@ -1,0 +1,168 @@
+\documentclass[11pt,a4paper]{report}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\usepackage{graphicx}
+
+\usepackage{listings}
+\usepackage{color} %red, green, blue, yellow, cyan, magenta, black, white
+\definecolor{mygreen}{RGB}{28,172,0} % color values Red, Green, Blue
+\definecolor{mylilas}{RGB}{170,55,241}
+
+
+\usepackage{graphicx}
+
+
+\begin{document}
+\begin{center}
+
+\LARGE Penalty gradient and non-linear ODEs 
+
+
+\end{center}
+We have the penalized functional
+\begin{align*}
+J(y,u,\lambda) = \int_0^T u^2 dt + \frac{1}{2}(y_n(T)-y_T)^2 + \frac{\mu}{2} \sum_{i=1}^n (y_{i-1}(T_i)-\lambda_i)^2 
+\end{align*}
+Our state equation is solved separately on $n+1$ intervals:
+\begin{align*}
+\frac{\partial }{\partial t} y_i &= y_i + u \ \text{for $t \in [T_{i},T_{i+1}]$}\\
+y_i(T_i) &= \lambda_i
+\end{align*}
+here $i=0,...,n$, $\lambda_0=y_0$ and $0=T_0<T_1<\cdots<T_n<T_{n+1}=T$. Want the gradient of the reduced functional:
+\begin{align*}
+\langle \hat{J}'(u,\lambda), (s,l)\rangle &= \langle \frac{\partial y(u,\lambda)}{\partial(u,\lambda)}^* J_y(y(u,\lambda),u,\lambda), (s,l)\rangle + \langle J_u+J_{\lambda}, (s,l)\rangle \\
+&=\langle -(E_u+E_{\lambda})p , (s,l)\rangle + \langle J_u+J_{\lambda}, (s,l)\rangle
+\end{align*} 
+Where p is the solution of the adjoint equation $E_y^*p=J_y$, and $E$ is our ODEs:
+\begin{align*}
+E^i(y,u,\lambda)= \frac{\partial }{\partial t} y_i - y_i -u+ \delta_{T_i}(y_i-\lambda_i)
+\end{align*} 
+Lets differentiate $E$:
+\begin{align*}
+E_y^i &= \frac{\partial }{\partial t} - 1 + \delta_{T_i} \\
+E_u^i &= -1 \\
+E_{\lambda_i}^i &= -\delta_{T_i}
+\end{align*}
+Lets differentiate $J$:
+\begin{align*}
+\langle J_u,s\rangle &= \int_0^T us \ dt \\
+J_{\lambda_i}&= -\mu(y_{i-1}(T_i)-\lambda_i) \\
+J_y &= \delta_{T_{n+1}}(y_n(T_{n+1})-y_T) + \mu \sum_{i=1}^n \delta_{T_{i}}(y_{i-1}(T_i)-\lambda_i ) 
+\end{align*}
+We also need $(E_y^i)^*$
+\begin{align*}
+\int_{T_i}^{T_{i+1}} E_y^iw \ v \ dt & = \int_{T_i}^{T-{i+1}} (\frac{\partial }{\partial t}w -w) \ v \ dt + w(T_i)v(T_i) \\
+&= \int_{T_i}^{T_{i+1}}-(\frac{\partial }{\partial t}v+v) \ w \ dt + w(T_{i+1})v(T_{i+1}) \\
+&= \int_{T_i}^{T_{i+1}} (-\frac{\partial }{\partial t}-1 + \delta_{T_{i+1}})v \ w \ dt
+\end{align*} 
+this means that $(E_y^i)^*=-\frac{\partial }{\partial t}-1 + \delta_{T_{i+1}}$. This gives us the following expressions for the adjoint equations:
+\\
+\\
+$i=n$ case:
+\begin{align*}
+-\frac{\partial }{\partial t}p_n &=p_n  \\
+p_n(T_{n+1}) &= y_n(T_{n+1})-y_T
+\end{align*}
+$i\neq n$ cases:
+\begin{align*}
+-\frac{\partial }{\partial t}p_i &=p_i  \\
+p_i(T_{i+1}) &= \mu(y_{i}(T_{i+1})-\lambda_{i+1} )
+\end{align*}
+Lets put everything into our expression for or gradient:
+\begin{align*}
+\langle \hat{J}'(u,\lambda), (s,l)\rangle&=\langle -(E_u+E_{\lambda})p, (s,l)\rangle + \langle J_u+J_{\lambda}, (s,l)\rangle \\
+&= \langle (1+\sum_{i=1}^n \delta_{T_i})p , (s,l)\rangle+ \int_0^T us \ dt - \mu \sum_{i=1}^{n}(y_{i-1}(T_i)-\lambda_i)l_i\\
+&=\int_0^T (u+p)s \ dt +\sum_{i=1}^n(p_{i}(T_i) -\mu(y_{i-1}(T_i)-\lambda_i) )l_i \\
+&= \int_0^T (u+p)s \ dt +\sum_{i=1}^n(p_{i}(T_i) -p_{i-1}(T_i) )l_i
+\end{align*} 
+\textbf{Augmented Lagrange}
+\\
+An alternative to the penalty method is the augmented Lagrange method. This method is similar to the penalty method, but it is apparently more stable. The main difference is in the functional, which now reads as:
+\begin{align*}
+J(y,u,\lambda) &= \int_0^T u^2 dt + \frac{1}{2}(y_n(T)-y_T)^2 + \frac{\mu}{2} \sum_{i=1}^n (y_{i-1}(T_i)-\lambda_i)^2 + \sum_{i=1}^n \Gamma_i(y_{i-1}(T_i)-\lambda_i) \\
+&= \int_0^T u^2 dt + \frac{1}{2}(y_n(T)-y_T)^2 +  (y_{i-1}(T_i)-\lambda_i)\sum_{i=1}^n (\Gamma_i+\frac{\mu}{2}(y_{i-1}(T_i)-\lambda_i))
+\end{align*}
+The difference is that we add non squared penalty terms with a Lagrange multiplication factor $\Gamma_i$. Since we change the functional, its derivative changes, however the only the $J_y$ and $J_{\lambda_i}$ terms change:
+\begin{align*}
+J_{\lambda_i}&= -\mu(y_{i-1}(T_i)-\lambda_i) -\Gamma_i\\
+J_y &= \delta_{T_{n+1}}(y_n(T_{n+1})-y_T) +  \sum_{i=1}^n \delta_{T_{i}}[\mu(y_{i-1}(T_i)-\lambda_i ) + \Gamma_i]
+\end{align*}
+This changes both the adjoint equations and the gradient. For the adjoint equations the change happens in the 'initial' condition:
+\begin{align*}
+-\frac{\partial }{\partial t}p_i &=p_i  \\
+p_i(T_{i+1}) &= \mu(y_{i}(T_{i+1})-\lambda_{i+1} ) + \Gamma_{i+1}
+\end{align*}
+For the gradient the change happens in the $\lambda$ part of the control:
+\begin{align*}
+\langle \hat{J}'(u,\lambda), (s,l)\rangle&=\langle -(E_u+E_{\lambda})p, (s,l)\rangle + \langle J_u+J_{\lambda}, (s,l)\rangle \\
+&= \int_0^T (u+p)s \ dt +\sum_{i=1}^n[(p_{i}(T_i) -p_{i-1}(T_i) )- \Gamma_i]l_i
+\end{align*}
+The $\Gamma$ need to be updated for each iteration, i.e. each time we change $\mu$.
+\\
+\\
+\textbf{Non-linear ODEs}
+\\
+We want to solve the ODE constrained optimization problem:
+\begin{align*}
+\min_{u}J(u,y(u)) \ \text{with } E(u,y)=0
+\end{align*}
+For the most part, we have let the ODE $E(u,y)=0$ be linear both in $y$ and $u$, and on the form:
+\begin{align*}
+\left\{
+     \begin{array}{lr}
+       	E(y,u) = y'-\alpha y -u\\
+       	   y(0)=y_0
+     \end{array}
+   \right.
+\end{align*} 
+Now I want to comment on what happens, when we let $E$ be non-linear in $y$. Let us then have the following equation:
+\begin{align*}
+\left\{
+     \begin{array}{lr}
+       	E(y,u) = y'- F(y) -u\\
+       	   y(0)=y_0
+     \end{array}
+   \right.
+\end{align*} 
+Here $F:\mathbb{R} \rightarrow \mathbb{R}$, is some differentiable function. We then get $E_y = \frac{\partial}{\partial t} - F'(y)$. To derive the adjoint equation, we need to take the adjoint of the operator $E_y$. This is problematic since it depends on $y$, however since we need to solve the state equation before the adjoint, we can think of $F'(y)$ as a function of $t$. Using this linearisation, we get the following adjoint equation: 
+\begin{align*}
+\left\{
+     \begin{array}{lr}
+       	\lambda'(t)=F'(y(t))\lambda(t)\\
+       	   \lambda(T)= y(T)-y_T
+     \end{array}
+   \right.
+\end{align*}
+The "initial" condition is derived in the usual way assuming: 
+\begin{align*}
+J(y,u)=L(u) + (y(T)-y_T)^2
+\end{align*}
+Where $L$ is some functional.
+\\
+\\
+\textbf{Non-quadratic y-term in functional}
+\\
+To make the problem a bit more complicated, lets change the functional in its last term:
+\begin{align*}
+J(y,u) = \int_0^T u^2 dt + \frac{1}{3}(y(T)-y_T)^3
+\end{align*}
+This change results in a different $J_y$, and therefore a changed adjoint equation. The derivative of $J$ with respect to $y$ is now:
+\begin{align*}
+J_y = (y(T)-y_T)^2\delta_T
+\end{align*}
+This changes the 'initial' condition of the adjoint equation. We now get the following ODE:
+\begin{align*}
+-\frac{\partial }{\partial t}p(t) &=p(t)  \\
+p(T) &= (y(T)-y_T)^2
+\end{align*}
+We can make this more general and look at the functional:
+\begin{align*}
+J(y,u) = \int_0^T u^2 dt + \frac{1}{q}(y(T)-y_T)^q
+\end{align*}
+This will then give us the adjoint equation:
+\begin{align*}
+-\frac{\partial }{\partial t}p(t) &=p(t)  \\
+p(T) &= (y(T)-y_T)^{q-1}
+\end{align*}
+\end{document}

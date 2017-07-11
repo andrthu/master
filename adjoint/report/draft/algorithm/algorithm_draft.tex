@@ -1,0 +1,69 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+
+\usepackage{program}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{booktabs}
+
+\usepackage{cite}
+
+
+\newtheorem{theorem}{Theorem}
+
+\usepackage{listings}
+\usepackage{color} %red, green, blue, yellow, cyan, magenta, black, white
+\definecolor{mygreen}{RGB}{28,172,0} % color values Red, Green, Blue
+\definecolor{mylilas}{RGB}{170,55,241}
+
+
+\usepackage{graphicx}
+\author{Andreas Thune}
+\title{Algorithm}
+
+
+\begin{document}
+\maketitle
+\section{Optimal control problem with time-dependent DE constraints on decomposed time interval}
+We are solving the problem
+\begin{align}
+\underset{y\in Y,v\in V}{\text{min}} \ &J(y(t),v) \\
+\textit{Subject to:} \ &E(y(t),v)=0 \ t\in [0,T] \label{initial problem}
+\end{align}
+To introduce parallelism, we decompose $I=[0,T]$ into $N$ subintervals $I_i=[T_{i-1},T_i]$, with $T_0=0$ and $T_N=T$. To be able to solve the differential equation $E$ on each interval $I_i$, we need intermediate initial conditions $y(T_i)=\lambda_i$ for $i=1,...,N-1$. This means that instead of finding $y$ by solving $E$ on the entire time domain $I$, we can now find $y$ by solving $E$ separately on on each subinterval $I_i$. the problem (\ref{initial problem}) now reads:
+\begin{align}
+\underset{y\in Y,v\in V}{\text{min}} \ &J(y(t),v) \\
+\textit{Subject to:} \ &E^i(y^i(t),v)=0 \ t\in [T_{i-1},T_i] \ \forall i \label{decomposed problem}
+\end{align} 
+Since we want the state $y$ to be continuous, we also need the following conditions:
+\begin{align}
+y^{i-1}(T_i)=y^i(T_i)=\lambda_i \ \ i=1,..,N-1 \label{Extra constraints}
+\end{align} 
+Both the problems (\ref{initial problem}) and (\ref{decomposed problem}) are constrained problems, and before we try to solve them we want to reduce them to unconstrained problems. In the original setting this can easily be done if we assume that each control variable $v$ corresponds to a unique solution $y$ of the state equation $E$. We can then define a reduced objective function $\hat{J}(v)$, and minimize it with respect to $v$, i.e solve the unconstrained problem:
+\begin{align*}
+\underset{v\in V}{\text{min}} \ \hat J(v)
+\end{align*} 
+Assuming that the decomposed state equations also can be uniquely resolved $\forall v$, we can again define a reduced objective function  $\hat{J}$. However because of the extra conditions (\ref{Extra constraints}) the reduction of (\ref{decomposed problem}) still produces a constrained problem:
+\begin{align}
+&\underset{v\in V}{\text{min}} \ \hat J(v) \\
+&y^{i-1}(T_i)=\lambda_i \ \ \forall i \label{constrained reduced}
+\end{align} 
+\section{The penalty method}
+To solve the constrained problem (\ref{constrained reduced}), we will use the penalty method, which transforms constrained problems into a series of unconstrained problems by incorporating the constraints into the functional. Incorporating the constraints means penalizing not satisfying the constraints. To use the penalty method on (\ref{constrained reduced}) we first introduce the initial conditions to the decomposed state equations as variables $\Lambda = (\lambda_1,..,\lambda_{n-1})^T$, and then define the penalized objective function $\hat J_{\mu}$:
+\begin{align}
+\hat J_{\mu}(v,\Lambda) = \hat J(v) + \frac{\mu}{2}\sum_{i=1}^{N-1}(y^{i-1}(T_i)-\lambda_i)^2
+\end{align}
+If we now minimize $\hat{J}_{\mu}$ with respect to $(v,\Lambda)$, while letting $\mu$ tend to infinity, we hope that the solution will satisfy the conditions (\ref{Extra constraints}), while also minimizing the actual problem (\ref{constrained reduced}). the algorithmic framework of this reads:
+\begin{align*}
+1: \ &\textit{Choose} \ \mu_0,\tau_0>0 \ \textit{and intial control} \ (v^0,\Lambda^0) \\
+2: \ &\textit{for $k=1,2,...$: } \\
+&2.1:\textit{Find} \ (v^k,\Lambda^k) \ \textit{s.t.} \ \parallel\nabla \hat J_{\mu_{k-1}}(v^k,\Lambda^k)\parallel<\tau_{k-1} \\
+&2.2:\textit{If STOPP CRITERION satisfied end algorithm} \\
+&2.3:\textit{Choose new} \ \tau_k\in(0,\tau_{k-1}),\ \mu_k\in(\mu_{k-1},\infty) 
+\end{align*}
+The parts of the above framework, that still needs special attention, is how we find $(v^k,\Lambda^k)$ in each iteration, how we update $\mu_k$ and $\tau_k$ and choosing an adequate stopping criteria. 
+\end{document}

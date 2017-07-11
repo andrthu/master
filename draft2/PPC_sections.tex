@@ -1,0 +1,711 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage{amsmath,amsfonts,amssymb,amsthm, gensymb}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{color, array, threeparttable}
+
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+ 
+\usepackage{cite}
+
+\usepackage[ruled]{algorithm2e}
+
+
+\usepackage{listings}
+\usepackage{color} %red, green, blue, yellow, cyan, magenta, black, white
+\definecolor{mygreen}{RGB}{28,172,0} % color values Red, Green, Blue
+\definecolor{mylilas}{RGB}{170,55,241}
+\DeclareMathAlphabet{\mathbbold}{U}{bbold}{m}{n}    
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{definition}{Definition}
+\newtheorem{proposition}{Proposition}
+
+
+\usepackage{graphicx}
+
+%\cite{maday2002parareal}
+% 4.3 \ref{algebraic_sec}
+\begin{document}
+\section{definition}
+\begin{definition}[Fine and coarse propagator]
+Let $f(u(t),t)=0$ be a time dependent differential equation without a source term. Given $\Delta T$ and an initial condition $\omega$, let $u_f$ and $u_c$ be a fine and a coarse numerical solution of the initial value problem:
+\begin{align}
+ \left\{
+     \begin{array}{lr}
+		f(u(t),t)=0 \ \quad \textrm{For $t \in (0,\Delta T)$} \\
+		u(0)=\omega
+	\end{array}
+	\right.	
+\end{align}
+We then define the fine propagator as $\bold F_{\Delta T}(\omega) = u_f(\Delta T)$ and the coarse propagator as $\bold G_{\Delta T}(\omega) = u_c(\Delta T)$.
+\end{definition}
+\section{PPC}
+\subsection{Virtual problem} \label{vir_sec}
+The Parareal-based preconditioner only affects the part of the gradient connected to the virtual control $\Lambda$. To motivate and derive $Q$, we therefore consider an optimal control problem where the real control $v$ is removed, and the objective function only depends on $\Lambda$. We have already presented this problem in section \ref{algebraic_sec}, but we restate it here for future reference. However, before we do this let us first properly define the fine and coarse propagators.
+\begin{definition}[Fine and coarse propagator] \label{prop_def}
+Let $f(y(t),t)=0$ be a time dependent differential equation without a source term. Given $\Delta T=\frac{T}{N}$ and an initial condition $\omega$, let $y_f$ and $y_c$ be a fine and a coarse numerical solution of the initial value problem:
+\begin{align}
+ \left\{
+     \begin{array}{lr}
+		f(y(t),t)=0 \ \quad \textrm{For $t \in (0,\Delta T)$} \\
+		y(0)=\omega
+	\end{array}
+	\right.	
+\end{align}
+We then define the fine propagator as $\bold F_{\Delta T}(\omega) = y_f(\Delta T)$ and the coarse propagator as $\bold G_{\Delta T}(\omega) = y_c(\Delta T)$. We also define the lower triangonal matrices $M,\bar M\in\mathbb{R}^{N-1\times N-1}$ as: 
+\begin{align*}
+M= \left[ \begin{array}{cccc}
+   \mathbbold{1} & 0 & \cdots & 0 \\  
+   -\bold{F}_{\Delta T} & \mathbbold{1} & 0 & \cdots \\ 
+   0 &-\bold{F}_{\Delta T} & \mathbbold{1}  & \cdots \\
+   0 &\cdots &-\bold{F}_{\Delta T} & \mathbbold{1}  \\
+   \end{array}  \right],
+\bar M= \left[ \begin{array}{cccc}
+   \mathbbold{1} & 0 & \cdots & 0 \\  
+   -\bold{G}_{\Delta T} & \mathbbold{1} & 0 & \cdots \\ 
+   0 &-\bold{G}_{\Delta T} & \mathbbold{1}  & \cdots \\
+   0 &\cdots &-\bold{G}_{\Delta T} & \mathbbold{1}   \\
+   \end{array}  \right].
+\end{align*}
+\end{definition}
+We then use the fine propagator $\bold F_{\Delta T}(\omega)$ to define the virtual problem.
+\begin{definition}[Virtual problem]
+Given a fine propagator $\bold F_{\Delta T}$, that solves a time dependent differential equation $f(y(t),t)=0$, an initial condition $\lambda_0=y_0$ and the control variable $\Lambda=(\lambda_1,...,\lambda_ {N-1})$, the virtual control problem is defined as follows:
+\begin{align}
+&\min_{\Lambda}\bold{J}(\Lambda,y) = \sum_{i=1}^{N-1} (y_{i-1}(T_{i})-\lambda_{i})^2 \label{virtual_func} \\
+&\textrm{Subject to } \ y_{i-1}(T_{i}) = \bold F_{\Delta T}(\lambda_{i-1}) \ i=1,...,N-1 \label{virtual}
+\end{align}
+\end{definition}
+In chapter \ref{parareal_chap} we explained how the virtual problem could be solved by setting $\lambda_i= \bold F_{\Delta T}(\lambda_{i-1})$, which is the same as solving $\bold J(\Lambda,y)=0$. This equation could be written up on matrix form as:
+\begin{align}
+M \ \Lambda = H. \label{Parareal_equation}
+\end{align}
+The $H$ on right hand side of the above equation is the propagator applied to the initial condition:
+\begin{align*}
+H = \left[ \begin{array}{c}
+   \bold F_{\Delta T}( y_0) \\
+   0 \\
+   \cdots \\
+   0 \\
+   \end{array}  \right].
+\end{align*}
+In section \ref{algebraic_sec} we explained how the Parareal algorithm could be reformulated as a preconditioned fix point iteration solving equation (\ref{Parareal_equation}), expressed as follows:
+\begin{align}
+\Lambda^{k+1} = \Lambda^k + \bar{M}^{-1}(H-M\Lambda^k)\label{par_mat_sys}
+\end{align}
+Where $\bar{M}$ is the coarse version of the matrix $M$ stated in definition \ref{prop_def}. When we are solving the original optimal control problem we do not try to find a triple $(v,\Lambda,y)$ that solves $J_{\mu}(v,\Lambda,y)=0$. Instead we try to solve $\hat J_{\mu}'(v,\Lambda)=0$. To find the Parareal-based preconditioner, we therefore try to find a similar expression to (\ref{Parareal_equation}) for $\bold{\hat{J}}'(\Lambda)=0$. To be able to find this expression, we first need to define the coarse and fine adjoint propagators.
+\begin{definition}[Fine and coarse adjoint propagator] \label{adjoint_prop_def}
+Let $f(y(t),t)=0$ be a time dependent differential equation. Given $\Delta T$ a state $y(t)$ and an initial condition $\omega$, let $p_f$ and $p_c$ be a fine and a coarse numerical solution of the initial value problem:
+\begin{align}
+ \left\{
+     \begin{array}{lr}
+		f'(y(t),t)^*p(t)=0 \ \quad \textrm{For $t \in (0,\Delta T)$} \\
+		p(\Delta T)=\omega
+	\end{array}
+	\right.	
+\end{align}
+We then define the fine adjoint propagator as $\bold F_{\Delta T}^*(\omega) = p_f(0)$ and the coarse adjoint propagator as $\bold G_{\Delta T}^*(\omega) = p_c(0)$. We also define adjoint versions of the matrices $M$ and $\bar M$ as: 
+\begin{align*}
+M^*= \left[ \begin{array}{cccc}
+   \mathbbold{1} & -\bold{F}_{\Delta T}^* & 0 & 0 \\  
+   0 & \mathbbold{1} & -\bold{F}_{\Delta T}^* & \cdots \\ 
+   \cdots &0 &  \mathbbold{1} & -\bold{F}_{\Delta T}^* \\
+   0 &\cdots &\cdots &  \mathbbold{1}  \\
+   \end{array}  \right],
+\bar M^*= \left[ \begin{array}{cccc}
+   \mathbbold{1} & -\bold{G}_{\Delta T}^* & 0 & 0 \\  
+   0 & \mathbbold{1} & -\bold{G}_{\Delta T}^* & \cdots \\ 
+   \cdots &0 &  \mathbbold{1} & -\bold{G}_{\Delta T}^* \\
+   0 &\cdots &\cdots &  \mathbbold{1}  \\
+   \end{array}  \right].
+\end{align*}
+\end{definition} 
+Using the matrices from definition \ref{adjoint_prop_def} we can write up the following proposition concerning the gradient of the reduced objective function of the virtual problem.
+\begin{proposition} \label{vir_grad_prop}
+The reduced objective function of the virtual problem (\ref{virtual_func}-\ref{virtual}) is:
+\begin{align}
+\bold{\hat J}(\Lambda) = \sum_{i=1}^{N-1} (\bold F_{\Delta T}(\lambda_{i-1})-\lambda_{i})^2.\label{reduced_viritual}
+\end{align}
+Solving $\bold{\hat J}'(\Lambda)=0$ is equivalent to resolving the system:
+\begin{align}
+M^* \ M \ \Lambda \ = \ M^* \ H. \label{vir_grad_sys}
+\end{align}
+A preconditioned fix point iteration for equation (\ref{vir_grad_sys}) inspired by the Parareal formulation (\ref{par_mat_sys}) is therefore:
+\begin{align}
+\Lambda^{k+1} = \Lambda^k + \bar{M}^{-1}\bar M^{-*}(M^*H-M^*M\Lambda^k). \label{grad_fix_iter}
+\end{align}
+\end{proposition}
+\begin{proof}
+Luckily for us we have already derived the gradient of $\bold{\hat J}$ in (\ref{penalty grad}). There we stated the gradient for the penalized version of the example problem (\ref{exs_J}-\ref{exs_E}). If we ignore the part of this gradient related to the real control $v$, we find get the following expression for $\bold{\hat J}'$:
+\begin{align*}
+\hat{\bold J}'(\Lambda) = \{p_{i+1}(T_i)-p_{i}(T_i)\}_{i=1}^{N-1}.
+\end{align*}
+Here $p_i$ refers to the decomposed adjoint equation on interval $[T_{i-1},T_{i}]$. We now want to show that setting $p_{i+1}(T_i)-p_{i}(T_i)=0$ for $i=1,...,N-1$ is equivalent to equation \ref{vir_grad_sys}. To do this we will simply write out the expression $M^*(M\Lambda-H)$ and show that it equals $\hat{\bold J}'(\Lambda)$. We start with $M\Lambda-H$.
+\begin{align*}
+M \ \Lambda - H  = \left( \begin{array}{c}
+	\lambda_1-\bold{F}_{\Delta T}(\lambda_0)\\
+	\lambda_2-\bold{F}_{\Delta T}(\lambda_1) \\
+	\cdots \\
+	\lambda_{N-1}-\bold{F}_{\Delta T}(\lambda_{N-1}) 
+	\end{array} \right).
+\end{align*}
+Notice that $\bold{F}_{\Delta T}(\lambda_{i-1})-\lambda_i$ is the initial condition of $i$-th adjoint equation, i.e. $p_i(T_i)=\bold{F}_{\Delta T}(\lambda_{i-1})-\lambda_i$. By exploiting this, and multiplying $M\Lambda-H$ with $M^*$ we get:
+\begin{align}
+M^* (M \ \Lambda-H)&=
+	\left( \begin{array}{c}
+	 \bold{F}_{\Delta T}^*(p_2( T_2))-p_1(T_1)\\
+	\bold{F}_{\Delta T}^*(p_3( T_3))-p_2(T_2)\\
+	\cdots \\
+	-p_{N-1}(T_{N-1})
+	\end{array} \right)
+	\\
+	&=\left( \begin{array}{c}
+	p_2(T_1)-p_1(T_1)\\
+	p_3(T_2)-p_2(T_2)\\
+	\cdots \\
+	p_{N-1}(T_{N-2})-p_{N-2}(T_{N-2}) \\
+	-p_{N-1}(T_{N-1})
+	\end{array} \right).
+\end{align}
+The last step is done by using $p_i(T_{i-1})=-F_{\Delta T}^*(-p_i(T_i))$, and this is possible since the adjoint equation is always linear. We see that the $i$-th component of $M^* (M \Lambda-H)$ is equal to $p_{i+1}(T_i)-p_{i}(T_i)$ for $i\neq N-1$. The last component of $M^* (M \Lambda-H)$ is $-p_{N-1}(T_{N-1})$, and we are therefore missing $p_N(T_{N-1})$. This is however unproblematic since in context of the the virtual problem $p_N(T_{N-1})=0$. This shows us that $\hat{\bold J}'(\Lambda)= M^* (M \Lambda-H)$, which means that $\hat{\bold J}'(\Lambda)=0 \iff M^*M\Lambda =M^*H$. Since $\bar M$ and $\bar M^*$ approximates $M$ and $M^*$, $\bar{M}^{-1}\bar M^{-*}$ would be a natural preconditioner for a fix point iteration solving $M^*M\Lambda =M^*H$. 
+\end{proof}
+Proposition \ref{vir_grad_prop} motivates $Q_{\Lambda}=\bar{M}^{-1}\bar M^{-*}$ as a preconditioner for solvers of decomposed and penalized optimal control problems, and this is actually the Parareal-based preconditioner proposed in \cite{maday2002parareal}. Inserting $Q_{\Lambda}$ into $Q$ yields the following:
+\begin{align}
+Q = \left[ \begin{array}{cc}
+	\mathbbold{1} & 0 \\
+	0 &  \bar{M}^{-1}\bar{M}^{-*}\\
+	\end{array} \right]. \label{Q_PC}
+\end{align}  
+In \cite{maday2002parareal} $Q$ is proposed as a preconditioner for a steepest descent method. We do however not know if $Q$ is positive definite, or if it is in any shape or form related to the Hessian of the objective function. We will investigate these questions further by reformulating the reduced objective function (\ref{reduced_viritual}) for the virtual problem to a least squares problem.
+\subsection{Virtual least squares problem}
+Looking at the equation $M^*M\Lambda =M^*H$ we recognize the normal equation, which is connected to linear least squares problems. We therefore suspect that the virtual problem can be reformulated as a least squares problem. It turns out that this is indeed the case. We write up the new formulation in definition \ref{VLSPD}.
+\begin{definition}[Virtual least squares problem] \label{VLSPD}
+Given a propagator $\bold F_{\Delta T}$ as defined in definition \ref{prop_def} and an initial condition $\lambda_0=y_0$ for the state equation, the least squares formulation of the virtual optimal control problem (\ref{virtual_func}-\ref{virtual}) reads as follows:
+\begin{align}
+\min_{\Lambda\in\mathbb{R}^{N-1}}\hat{\bold J}(\Lambda) = x(\Lambda)^Tx(\Lambda), \label{non_lin_LS}
+\end{align}
+where the vector function $x:\mathbb{R}^{N-1}\rightarrow \mathbb{R}^{N-1}$ is:
+\begin{align}
+x(\Lambda)= \left( \begin{array}{c}  
+   \lambda_1 - \bold F_{\Delta T}(\lambda_0) \\ 
+   \lambda_2 - \bold F_{\Delta T}(\lambda_1) \\
+   \cdots  \\
+   \lambda_{N-1} -\bold F_{\Delta T}(\lambda_{N-1}) \\
+   \end{array}  \right).
+\end{align}
+\end{definition}
+We are now interested in finding the Hessian of $\hat{\bold J}(\Lambda)$, which we hope to relate to the Parareal-based preconditioner. 
+\begin{proposition}\label{NonLin_prop}
+The Hessian of function (\ref{non_lin_LS}) is
+\begin{align*}
+\nabla^2 \hat{\bold J}(\Lambda) &= 2\nabla x^T\nabla x + 2\sum_{i=1}^{N-1} \nabla^2 x_i(\Lambda) x_i(\Lambda)\\
+&=2M(\Lambda)^TM(\Lambda) + 2D(\Lambda)
+\end{align*}
+Here $D(\Lambda)$ is a diagonal matrix with diagonal entries 
+\begin{align*}
+D_i=-\bold{F}_{\Delta T}''(\lambda_i)(\lambda_{i+1}-\bold F_{\Delta T}(\lambda_i)) \quad i=1,...,N-1,
+\end{align*}
+while $M(\Lambda)$ is the linearised forward model:
+\begin{align*}
+M(\Lambda) &= \left[ \begin{array}{cccc}
+   \mathbbold{1} & 0 & \cdots & 0 \\  
+   -\bold{F}_{\Delta T}'(\lambda_{1}) & \mathbbold{1} & 0 & \cdots \\ 
+   0 &-\bold{F}_{\Delta T}'(\lambda_{2}) & \mathbbold{1}  & \cdots \\
+   0 &\cdots &-\bold{F}_{\Delta T}'(\lambda_{N-1}) & \mathbbold{1}  \\
+   \end{array}  \right]
+\end{align*}	
+\end{proposition}
+\begin{proof}
+We start by differentiating $\hat{\bold J}$:
+\begin{align*}
+\nabla \hat{\bold J}(\Lambda) &= 2 \nabla x(\Lambda)^T x(\Lambda)\\
+&=2\sum_{i=1}^{N-1} \nabla x_i(\Lambda) x_i(\Lambda)
+\end{align*}
+If we now differentiate $\nabla \hat{\bold J}$, we get:
+\begin{align*}
+\nabla^2 \hat{\bold J}(\Lambda) &= 2\nabla x^T\nabla x + 2\sum_{i=1}^{N-1} \nabla^2 x_i(\Lambda) x_i(\Lambda)
+\end{align*}
+We see that $\nabla x(\Lambda)=M(\Lambda)$, by looking at $\frac{\partial x_i}{\partial \lambda_j}$
+\begin{align*}
+\frac{\partial x_i}{\partial \lambda_j} = \left\{
+     \begin{array}{lr}
+		1 \quad\quad\quad\quad\quad i=j\\
+		-\bold F_{\Delta T}'(\lambda_{j}) \quad i>1 \wedge j=i-1 \\
+		0 \quad\quad\quad\quad\quad i\neq j \vee j\neq i-1
+	\end{array}
+   \right.	
+\end{align*}
+We can similarly find $\nabla^2 x_i$ by differentiating $x$ twice:
+\begin{align*}
+\frac{\partial^2 x_i}{\partial \lambda_j\partial\lambda_k} = \left\{
+     \begin{array}{lr}
+		-\bold F_{\Delta T}''(\lambda_{j}) \quad i>1 \wedge j=k=i-1 \\
+		0 \quad\textrm{in all other cases}
+	\end{array}
+   \right.	
+\end{align*}
+Now summing up the terms $\nabla^2 x_i(\Lambda)x_i(\Lambda)$ would yield the diagonal matrix $D(\Lambda)$ described in proposition \ref{NonLin_prop}.
+\end{proof}
+The first term of $\nabla^2 \hat{\bold J}(\Lambda)=2M(\Lambda)^TM(\Lambda) + 2D(\Lambda)$ resembles $M^*M$ from the previous section, while the second term $2D(\Lambda)$ is new. $D(\Lambda)$ is a diagonal matrix where the diagonal entries consists of products between the second derivative of $\bold F_ {\Delta T}$ and the residuals $\lambda_{i+1}-\bold F_{\Delta T}(\lambda_i)$. If the governing equation of the propagator $\bold F_ {\Delta T}$ is linear, $\bold F_{\Delta T}''(\lambda_i)=0$. This would again mean that $D(\Lambda)=0$ and that $\nabla^2 \hat{\bold J}(\Lambda)=2M(\Lambda)^TM(\Lambda)$. We will therefore split our discussion of the Hessian of $\hat{\bold J}$ into two cases. In the first we assume the sate equation is linear, while in the second case we discuss non-linear state equations.
+\subsubsection{Linear state equations}
+Assuming that the state equation is linear means that $\nabla^2 \hat{\bold J}(\Lambda)=2M(\Lambda)^TM(\Lambda)$. Differentiating the propagator $\bold F_{\Delta T}$ is the same as linearising its governing equation. When the governing equation is it self linear, linearising it does not change the equation. Therefore $\bold F_{\Delta T}'(\lambda_i)\lambda_i = \bold F_{\Delta T}(\lambda_i)$. This means that the $M$ matrix from section \ref{vir_sec} is equal to $M(\Lambda)$. The same is true for $M^*$ and $M(\Lambda)^T$. Since  $\nabla^2 \hat{\bold J}(\Lambda)=2M^*M$ we see that the Parareal-based preconditioner proposed in \cite{maday2002parareal} is in fact related to the inverse Hessian of the reduced penalized objective function. If we can show that $\bar M^*\bar M$ is a positive definite matrix, we can use $Q$ as an initial approximation of the inverse Hessian in the BFGS optimization algorithm. This is however quite simple to do, as we will see in the proof of the following proposition.
+\begin{proposition} \label{pos_def_prop}
+ If $\bold G_{\Delta T}$ and $\bold G_{\Delta T}^*$ are based on consistent numerical methods, $\bar M^*=\bar M^T$, and the matrix $\bar M^*\bar M$ is positive definite.
+\end{proposition}
+\begin{proof}
+If $\bold G_{\Delta T}$ and $\bold G_{\Delta T}^*$ are based on consistent numerical methods, $\bold G_{\Delta T}(\omega)=\bold G_{\Delta T}^*(\omega)$. When inserting this into the matrices $\bar M$ and $\bar M^*$ from definition \ref{prop_def} and \ref{adjoint_prop_def}, we clearly see that $\bar M^*=\bar M^T$. For $M^*M$ to be positive definite, the following to conditions must hold:
+\begin{align*}
+&1.\quad x^T\bar M^*\bar Mx \geq 0 \quad \forall x\in\mathbb{R}^{N-1} \\
+&2.\quad x^T\bar M^*\bar Mx =0 \iff x=0
+\end{align*}
+The first conditions hold due to $\bar M^*=\bar M^T$:
+\begin{align*}
+x^T\bar M^*\bar Mx = (\bar Mx)^T\bar Mx = ||Mx||^2 \geq 0.
+\end{align*}
+The second condition hold if $\bar M$ is invertible. This is true because $\bar M$ is a triangular matrix, with identity on its diagonal, and therefore has a determinant equal to 1. The determinant of a matrix being unequal to zero is equivalent with being invertible, which means that our matrix $\bar M$ is invertible. This also means that $M^*M$ is positive definite.
+\end{proof}
+Proposition \ref{pos_def_prop} shows that the $\bar M^*\bar M$ matrix stemming from the virtual problem is positive definite. We can therefore use it as an initial Hessian approximation in the BFGS algorithm, at least as long as $\bold G_ {\Delta T}$ and $\bold G_ {\Delta T}^*$ are consistent. Now let us take a look at the case where the governing equation of $\bold F_{\Delta T}$ is non-linear.
+\subsubsection{Non-linear state equations}
+Unlike the Hessian of the linear problem the Hessian of the non-linear problem consists of two parts. One is the linearised forward model multiplied with its adjoint, while the second part is a diagonal matrix related to the second derivative of the propagator $\bold F_{\Delta T}$, and the residuals $\lambda_i-\bold F_{\Delta T}$. The first part of $\nabla^2 \bold{\hat{J}}$ is analogue to the Hessian of the linear problem. It is symmetric positive definite, and taking its inverse corresponds to first applying the backwards model, and then the forward model. What makes the Hessian of the non-linear problematic is therefore its second term. The first issue with the diagonal matrix $D(\Lambda)$, is how to calculate $\bold F_{\Delta T}''$. Another issue is that we can not guarantee that the sum of $M(\Lambda)^TM(\Lambda)$ and $D(\Lambda)$ is a positive matrix, and the same problem would arise in a coarse approximation of $\nabla^2 \bold{\hat{J}}$. The lack of positivity is a problem since we want to use the coarse approximation as an initial inverted Hessian approximation in the BFGS-algorithm.
+\\
+\\
+A way to get around the $D(\Lambda)$ term in the Hessian for non-linearly constrained problem, is simply to ignore it. This leaves us with the $M(\Lambda)^TM(\Lambda)$ term, which we know how to deal with. Ignoring the term depending on the second derivative and the residual is actually a known strategy for for solving non-linear least square problems. Details can be found in \cite{nocedal2006numerical}. A justification for this approach, is that at least in instances where we are close to a solution, the $\lambda_i-\bold F_{\Delta T}$ terms will be close to zero, and the $M(\Lambda)^TM(\Lambda)$ term will therefore dominate the Hessian. Ignoring the $D(\Lambda)$ term means that we can define an inverse Hessian approximation based on a coarse propagator $\bold G_{\Delta T}$ in the same way as we did for the problem with linear state equation constraints. This means that we define a matrix $\bar M(\Lambda)$:
+\begin{align}
+\bar M(\Lambda) &= \left[ \begin{array}{cccc}
+   \mathbbold{1} & 0 & \cdots & 0 \\  
+   -\bold{G}_{\Delta T}'(\lambda_{1}) & \mathbbold{1} & 0 & \cdots \\ 
+   0 &-\bold{G}_{\Delta T}'(\lambda_{2}) & \mathbbold{1}  & \cdots \\
+   0 &\cdots &-\bold{G}_{\Delta T}'(\lambda_{N-1}) & \mathbbold{1}  \\
+   \end{array}  \right] \label{ppc_linearized}
+\end{align}
+The term $\bar{M}(\Lambda)^{-1}\bar{M}(\Lambda)^{-*}$ can then be used in an approximation of the inverse Hessian, as detailed in section \ref{vir_sec}.
+\subsection{Parareal-based precoditioner for example problem}
+To illustrate what $Q$ actually will look like we write up $\bar M^*\bar M$ for our example problem (\ref{exs_J}-\ref{exs_E}). The state and adjoint equation of this problem is:
+\begin{align}
+y'(t) &= ay(t) + v(t), \label{ppc_state} \\
+p'(t) &= -ap(t). \label{ppc_adjoint}
+\end{align}
+The state equation includes a source term, which will not be included in the governing equation of the propagators, since the propagators are based on the virtual sourceless problem. This means that the governing equation of $\bold G_{\Delta T}$ is $y'(t) = ay(t)$. Alternatively we could let (\ref{ppc_state}) govern $\bold G_{\Delta T}$, but instead use $\bar M(\Lambda)$ from (\ref{ppc_linearized}) in our preconditioner, which would produce the same result. 
+\\
+\\
+Let us now try to write out $\bar M^*\bar M$ for our example problem, when we have decomposed the time interval into $N$ subintervals. We first need to choose a numerical method to discretize the state and adjoint. In this example we will use the implicit Euler scheme from section \ref{FD_sub_sec}, with $\Delta T=\frac{T}{N}$. We can then write up $\bold G_{\Delta T}(\omega)$ and $\bold G_{\Delta T}^*(\omega)$:
+\begin{align*}
+\frac{\bold G_{\Delta T}(\omega)-\omega}{\Delta T}&=  a\bold G_{\Delta T}(\omega) \\
+&\Rightarrow \bold G_{\Delta T}(\omega)= \frac{\omega}{1-a\Delta T} \\
+\frac{\omega-\bold G_{\Delta T}^*(\omega)}{\Delta T}&= -a\Delta T \bold G_{\Delta T}^*(\omega) \\
+&\Rightarrow \bold G_{\Delta T}^*(\omega)= \frac{\omega}{1-a\Delta T} 
+\end{align*}
+Since $\bold G_{\Delta T}(\omega)= \bold G_{\Delta T}^*(\omega)$, using implicit Euler both forwards and backwards produce consistent coarse propagators. We can now write up an exact expression for $\bar M\in\mathbb{R}^{N-1\times N-1}$. 
+\begin{align*}
+\bar M = \left[ \begin{array}{cccc}
+   	1 & 0 & \cdots & 0 \\  
+   	-\frac{1}{1-a\Delta T} & 1 & 0 & \cdots \\ 
+   	0 &-\frac{1}{1-a\Delta T} & 1  & \cdots \\
+   	0 &\cdots &-\frac{1}{1-a\Delta T} & 1  \\
+  	\end{array}  \right].
+\end{align*}
+By traversing $\bar M$ we get $\bar M^*$. When we apply $Q$, we are not using $\bar M^*\bar M$, but instead its inverse. Let us illustrate how this is done for our example problem, when $N=4$. We first decompose $I=[0,T]$ into four sub-intervals $[T_0,T_1], [T_1,T_2], [T_2,T_3]$ and $[T_3,T_4]$. If we then evaluate the discrete gradient for a real control variable $v\in\mathbb{R}^{n+1}$ and a virtual control $\Lambda =(\lambda_1,\lambda_2,\lambda_3)$, the result is $\hat J_{\mu}(v,\Lambda)\in\mathbb{R}^{N+n}$. Multiplying $Q$ with $\hat J_{\mu}(v,\Lambda)$ will only affect its three last components, which we name $J_{\lambda_1},J_{\lambda_2}$ and $J_{\lambda_3}$. Applying $Q$ to $\hat J_{\mu}$ is done in two steps. We first multiply with $\bar M^{-*}$ based on on the propagator $\bold G_{\Delta T}^*= -\frac{1}{1-a\Delta T} $ 
+\begin{align*}
+\bar{J_{\lambda_1}} &=J_{\lambda_1} -\frac{1}{1-a\Delta T}(J_{\lambda_2} -\frac{1}{1-a\Delta T}J_{\lambda_3})\\
+\bar{J_{\lambda_2}} &=J_{\lambda_2} -\frac{1}{1-a\Delta T}J_{\lambda_3}\\
+\bar{J_{\lambda_3}} &=J_{\lambda_3} 
+\end{align*} 
+The second step is then to apply the forward system based on the coarse propagator $\bold G_{\Delta T}= -\frac{1}{1-a\Delta T} $:
+\begin{align*}
+\bar{\bar{J_{\lambda_1}}}&=\bar{J_{\lambda_1}} \\
+\bar{\bar{J_{\lambda_2}}}&=\bar{J_{\lambda_2}}-\frac{1}{1-a\Delta T}\bar{J_{\lambda_1}} \\
+\bar{\bar{J_{\lambda_3}}}&=\bar{J_{\lambda_3}} -\frac{1}{1-a\Delta T}(\bar{J_{\lambda_2}}-\frac{1}{1-a\Delta T}\bar{J_{\lambda_1}})
+\end{align*} 
+The result of multiplying $Q$ with the discrete penalized gradient is that the three last components of $\hat J_{\mu}(v,\Lambda)$ is changed to $\bar{\bar{J_{\lambda_1}}},\bar{\bar{J_{\lambda_2}}}$ and $\bar{\bar{J_{\lambda_3}}}$. 
+\\
+\\
+We end the section on the Parareal-based preconditioner with an important note about what happens when $N=2$. If we decompose the time domain into $N=2$ subdomains, both $\bar M$ and $\bar M^*$ becomes the identity matrix. This means that for $N=2$, $Q=\mathbbold{1}$, and therefore have no effect. Since $Q$ has no effect for $N=2$, we might also expect that for "small" $N$, the impact of $Q$ is only modest, and that the usefulness of $Q$ only materializes for higher values of decomposed subintervals $N$.
+\section{old}
+In order for us to be able to derive the preconditioner from \cite{maday2002parareal}, we need the virtual optimal control problem from section \ref{algebraic_sec}. For reference let us restate it below:
+\begin{align}
+&\min_{\Lambda}\bold{J}(\Lambda,y) = \sum_{i=1}^{N-1} (y_{i-1}(T_{i})-\lambda_{i})^2 \label{virtual_func} \\
+&\textrm{Subject to } \ y_{i-1}(T_{i}) = \bold F_{\Delta T}(\lambda_{i-1}) \ i=1,...,N-1 \label{virtual}
+\end{align}
+Here $\Lambda=(\lambda_0=y_0,\lambda_1,...,\lambda_ {N-1})$ and $\bold F_{\Delta T}$ is the fine propagator from section \ref{Parareal_sec}. In the context of the virtual problem (\ref{virtual_func}-\ref{virtual}), $\bold F_{\Delta T}(\omega)$ propagates $\omega$ one time step of length $\Delta T$ using the equation:
+\begin{align}
+\left\{
+     \begin{array}{lr}
+       	\frac{\partial}{\partial t} y(t)-ay(t)=0  \ \textrm{for } \ t\in(0,\Delta T),\\
+       	y(0)=\omega.
+     \end{array}
+   \right. \label{virtual_exs}
+\end{align} 
+In chapter \ref{parareal_chap} we explained how the virtual problem could be solved by setting $\lambda_i= \bold F_{\Delta T}(\lambda_{i-1})$, which is the same as solving $\hat{J}(\Lambda)=0$. This eventually led us to the parareal scheme, defined on matrix form as:
+\begin{align}
+\Lambda^{k+1} = \Lambda^k + \bar{M}^{-1}(H-M\Lambda^k)\label{par_mat_sys}
+\end{align}
+Where $M$ and $\bar{M}$ are matrix representations of the fine and coarse resolution propagators $\lambda_i= \bold F_{\Delta T}(\lambda_{i-1})$ and  $\lambda_i= \bold G_{\Delta T}(\lambda_{i-1})$:
+\begin{align*}
+M = \left[ \begin{array}{cccc}
+   \mathbbold{1} & 0 & \cdots & 0 \\  
+   -\bold{F}_{\Delta T} & \mathbbold{1} & 0 & \cdots \\ 
+   0 &-\bold{F}_{\Delta T} & \mathbbold{1}  & \cdots \\
+   0 &\cdots &-\bold{F}_{\Delta T} & \mathbbold{1}  \\
+   \end{array}  \right],
+\bar{M} = \left[ \begin{array}{cccc}
+   \mathbbold{1} & 0 & \cdots & 0 \\  
+   -\bold{G}_{\Delta T} & \mathbbold{1} & 0 & \cdots \\ 
+   0 &-\bold{G}_{\Delta T} & \mathbbold{1}  & \cdots \\
+   0 &\cdots &-\bold{G}_{\Delta T} & \mathbbold{1}   \\
+   \end{array}  \right]
+\end{align*}
+In section \ref{algebraic_sec} we said that $\bar M^{-1}$ can be seen as a preconditioner for the fix point iteration solving $\bold{J}(\Lambda,y)=0$. Solving the virtual problem in this way is only possible since we know that the minimum value of $\bold{J}(\Lambda,y)$ is zero. A more natural approach to solving this problem, would first be to reduce $\bold J$ to only depend on $\Lambda$, and then solve $\hat {\bold J}'(\Lambda)=0$. If we could find a preconditioner to a fix point iteration solving $\hat{ \bold J} '(\Lambda)=0$, this would be a candidate for $Q_{\Lambda}$. Let us start by writing up the reduced version of (\ref{virtual_func}-\ref{virtual}):
+\begin{align}
+\min_{\Lambda\in\mathbb{R}^{N-1}}\hat {\bold J}(\Lambda) = \sum_{i=1}^{N-1} (\bold F_{\Delta T}(\lambda_{i-1})-\lambda_{i})^2,\quad \lambda_0=y_0 \label{reduced_viritual}
+\end{align} 
+Now that we have an expression for the reduced objective function $\hat {\bold J}$, we can try to find its gradient. Luckily for us we have already derived the gradient for the more general problem (\ref{exs_J}-\ref{exs_E}) in (\ref{penalty grad}). We get the virtual control problem from the more general problem if we remove the control variable $v$ from the state and objective function of (\ref{exs_J}-\ref{exs_E}). $\hat {\bold J}'(\Lambda)$ is therefore given as:
+\begin{align*}
+\hat{\bold J}'(\Lambda) = \{p_i(T_i)-p_{i-1}(T_i)\}_{i=1}^{N-1}
+\end{align*}
+Here $p^i$ are the solutions of the adjoint equations (\ref{exs_adjoint}). Since we need the adjoints, let us define the fine adjoint propagator $\bold{F}_{\Delta T}^*(\omega)$ as we did for $\bold{F}_{\Delta T}$, but now $\omega$ is propagated backwards one time step of length $\Delta T$, and the equation $\bold{F}_{\Delta T}^*$ solves is:   
+\begin{align}
+\left\{
+     \begin{array}{lr}
+	\frac{\partial }{\partial t}p +ap=0,\quad t\in (0,\Delta T)  \\
+	p(\Delta T) = \omega
+	\end{array}
+   \right. \label{virtual_adjoint_exs}
+\end{align}
+We also define $\bold G_{\Delta T}^*$ as the fine adjoint propagators coarse counterpart. Next we can define the matrices $M^*$ and $\bar M^*$ as:
+\begin{align*}
+M^*= \left[ \begin{array}{cccc}
+   \mathbbold{1} & -\bold{F}_{\Delta T}^* & 0 & 0 \\  
+   0 & \mathbbold{1} & -\bold{F}_{\Delta T}^* & \cdots \\ 
+   \cdots &0 &  \mathbbold{1} & -\bold{F}_{\Delta T}^* \\
+   0 &\cdots &\cdots &  \mathbbold{1}  \\
+   \end{array}  \right],
+\bar M^*= \left[ \begin{array}{cccc}
+   \mathbbold{1} & -\bold{G}_{\Delta T}^* & 0 & 0 \\  
+   0 & \mathbbold{1} & -\bold{G}_{\Delta T}^* & \cdots \\ 
+   \cdots &0 &  \mathbbold{1} & -\bold{G}_{\Delta T}^* \\
+   0 &\cdots &\cdots &  \mathbbold{1}  \\
+   \end{array}  \right]
+\end{align*}
+It then turns out that solving $\hat{J}'(\Lambda)=0$ is the same as solving the system:
+\begin{align}
+M^* \ M \ \Lambda \ = \ M^* \ H \label{vir_grad_sys}
+\end{align}
+The reason we see by moving $M^*H$ to the left hand side of (\ref{vir_grad_sys}) and writing out what $M^*( \ M \ \Lambda-H)$ means. Firstly:
+\begin{align}
+M \ H-\Lambda  = \left( \begin{array}{c}
+	y_0-\lambda_0  \\
+	 \bold{F}_{\Delta T}(\lambda_0)-\lambda_1 \\
+	 \bold{F}_{\Delta T}(\lambda_1)-\lambda_2  \\
+	\cdots \\
+	\bold{F}_{\Delta T}(\lambda_{N-2})-\lambda_{N-1} 
+	\end{array} \right)
+\end{align}
+We recognise $\bold{F}_{\Delta T}(\lambda_{i-1})-\lambda_i=y^i(T_i) -\lambda_i$, $i=1,...,N-1$ as the initial conditions of the adjoint equations (\ref{exs_adjoint}). This means that $\bold{F}_{\Delta T}(\lambda_{i-1})-\lambda_i=p^i(T_i)$, and that: 
+\begin{align}
+M \ H-\Lambda  = \left( \begin{array}{c}
+	y_0-\lambda_0  \\
+	 p^1(T_1) \\
+	 p^2( T_2) \\
+	\cdots \\
+	p^{N-1}(T_{N-1}) 
+	\end{array} \right)
+\end{align}
+If we then apply $M^*$ to $M \ H-\Lambda$, we get:
+\begin{align}
+M^* (M \ H-\Lambda)&=
+	\left( \begin{array}{c}
+	y_0-\lambda_0 -\bold{F}_{\Delta T}^*(p^1(T_1))\\
+	 p^1(T_1)-\bold{F}_{\Delta T}^*(p^2( T_2))\\
+	p^2( T_2)-\bold{F}_{\Delta T}^*(p^3( T_3))\\
+	\cdots \\
+	p^{N-1}(T_{N-1})
+	\end{array} \right)
+	\\
+	&=\left( \begin{array}{c}
+	y_0-\lambda_0 - p_1(T_0)\\
+	p_1(T_1)-p_2(T_2)\\
+	p_3(T_2)-p_2(T_2)\\
+	\cdots \\
+	p_{N-2}(T_{N-2})-p_{N-1}(T_{N-2}) \\
+	p_{N-1}(T_{N-1})
+	\end{array} \right)
+\end{align}
+The last vector, can be recognised as the negative gradient of (\ref{virtual_func}) in its 2nd to $(N-1)$th indices, which shows that solving (\ref{vir_grad_sys}) is the same as solving $\hat {\bold J}'(\Lambda)=0$. If we then created a fix point iteration for (\ref{vir_grad_sys}), in a similar fashion as (\ref{par_mat_sys}), it would look like this:
+\begin{align*}
+\Lambda^{k+1} = \Lambda^k + \bar{M}^{-1}\bar M^{-*}(M^*H-M^*M\Lambda^k)
+\end{align*}
+$\bar{M}^{-1}\bar{M}^{-*}$ could then be thought of as the preconditioner of the iteration, in the sense that $\bar{M}^{-1}\bar{M}^{-*}M^*M$ would be close to $\mathbbold{1}$. If $\bar{M}^{-1}\bar{M}^{-*}$ works as a preconditioner for  $\hat {\bold J}'(\Lambda)=0$ where $\hat {\bold J}$ is the objective function in the virtual problem, \cite{maday2002parareal} proposes $\bar{M}^{-1}\bar{M}^{-*}$ as a preconditioner for the penalized optimal control problem (\ref{decomp_E}-\ref{penalty_func}). Meaning that we set $Q$ to be:
+\begin{align}
+Q = \left[ \begin{array}{cc}
+	\mathbbold{1} & 0 \\
+	0 &  \bar{M}^{-1}\bar{M}^{-*}\\
+	\end{array} \right] \label{Q_PC}
+\end{align}  
+We have derived $Q$ by trying to find a good preconditioner for the fix point iteration for solving $\hat {\bold J}'(\Lambda)=0$. Whether $\bar{M}^{-1}\bar{M}^{-*}$ has anything to do with the inverse Hessian of $\hat J'$ is however not clear. It turns out that $M^*M$ actually is related to the Hessian of the virtual problem, which we will show in the next subsection.
+\subsection{$\bar{M}^{*}\bar{M}$ as an approximation of the Hessian} 
+In order for us to make it easier to differentiate the gradient of the reduced objective function (\ref{reduced_viritual}), we try to write up $\hat{\bold J}$ on vector notation. Even though the propagator $\bold F$ is generally defined, and might very well be non-linear, we will now and for the rest of this subsection assume that the propagator is linear. Let us first define the vector $x(\Lambda)\in\mathbb{R}^{N-1}$ as:
+\begin{align}
+x(\Lambda)= \left( \begin{array}{c}  
+   \lambda_1 - y_1(T_1) \\ 
+   \lambda_2 - y_2(T_2) \\
+   \cdots  \\
+   \lambda_{N-1} -y_{N-1}(T_{N-1})  \\
+   \end{array}  \right).
+\end{align} 
+We can then formulate the problem (\ref{reduced_viritual}) as a least square problem:
+\begin{align}
+\min_{\Lambda}\hat{\bold J}(\Lambda) = \min_{\Lambda}x(\Lambda)^Tx(\Lambda) \label{vector_J}  
+\end{align}
+Here $x(\Lambda)^T$ means $x(\Lambda)$ transposed. We then want to express $x$ on matrix notation in terms of $\Lambda$ and $y_0$. To do this, we first find an expression for $\{y_i(T_i)\}_{i=1}^{N-1}$:
+\begin{align}
+\left( \begin{array}{c}
+   y_0(T_1) \\  
+   y_1(T_2) \\ 
+   \cdots  \\
+   y_{N-1}(T_N)  \\
+   \end{array}  \right)= 
+   \left[ \begin{array}{cccc}  
+   0 & 0 & \cdots & 0 \\ 
+   \bold{F}_{\Delta T}&0 & 0  & \cdots \\
+   0 &  \bold{F}_{\Delta T}&0 & \cdots \\
+   0 &\cdots &\bold{F}_{\Delta T}& 0   \\
+   \end{array}  \right]
+   \left( \begin{array}{c}
+   \lambda_1 \\  
+   \lambda_2 \\ 
+   \cdots  \\
+   \lambda_{N-1}  \\
+   \end{array}  \right) + 
+   \left( \begin{array}{c}
+   \bold{F}_{\Delta T}(y_0)\\  
+   0\\ 
+   \cdots  \\
+   0  \\
+   \end{array}  \right)
+\end{align}
+and when we insert this into $x$, we get:
+\begin{align}
+x = \left[ \begin{array}{cccc}
+   \mathbbold{1} & 0 & \cdots & 0 \\  
+   -\bold{F}_{\Delta T} & \mathbbold{1} & 0 & \cdots \\ 
+   0 &-\bold{F}_{\Delta T} & \mathbbold{1}  & \cdots \\
+   0 &\cdots &-\bold{F}_{\Delta T} &  \mathbbold{1}  \\
+   \end{array}  \right]
+   \left( \begin{array}{c}
+   \lambda_1 \\  
+   \lambda_2 \\ 
+   \cdots  \\
+   \lambda_{N-1}  \\
+   \end{array}  \right) -
+   \left( \begin{array}{c}
+   \bold{F}_{\Delta T}(y_0)\\  
+   0\\ 
+   \cdots  \\
+   0  \\
+   \end{array}  \right)
+\end{align}
+or:
+\begin{align}
+x  &= M \left( \begin{array}{c}
+   \lambda_1 \\  
+   \lambda_2 \\ 
+   \cdots  \\
+   \lambda_{N-1}  \\
+   \end{array}  \right) -
+   \left( \begin{array}{c}
+   \bold{F}_{\Delta T}(y_0)\\  
+   0\\ 
+   \cdots  \\
+   0  \\
+   \end{array}  \right) \\
+   & = M \Lambda -\left( \begin{array}{c}
+   \bold{F}_{\Delta T}(y_0)\\  
+   0\\ 
+   \cdots  \\
+   0  \\
+   \end{array}  \right) \\
+   &=M \Lambda-b
+\end{align}
+This allows us to write up the reduced functional $\hat{\bold J}$, that only depends on $\Lambda$:
+\begin{align}
+\hat{\bold J}(\Lambda)&= x^Tx =
+(M  \Lambda -b)^T(M  \Lambda -b) \\
+&= (M  \Lambda)^T(M  \Lambda) - (M  \Lambda)^Tb-b^T(M  \Lambda) + b^Tb \\
+&=\Lambda^TM^TM  \Lambda - 2\Lambda^TM^Tb + b^Tb \label{T_J}
+\end{align}
+An important thing to note about the above expression, is that $M^T$ does not necessarily equal $M^*$, since $M^*$ is defined by the fine adjoint propagator $\bold F_ {\Delta T}^*$, and is not simply the transposed of $M$. Before we look further into the difference of $M^*$ and $M^T$, we write up the Hessian of $\hat{\bold J}$ in the proposition below:
+\begin{proposition}\label{prop_lLS}
+The Hessian of the reduced objective function $\hat{\bold J}$ (\ref{T_J}) originating from the virtual problem (\ref{virtual_func}-\ref{virtual}) is:
+\begin{align}
+\nabla^2\hat{\bold J}(\Lambda) = 2 M^TM
+\end{align}
+\end{proposition}
+\begin{proof}
+We can easily verify the above proposition by differentiating expression (\ref{T_J}). First the gradient $\nabla \hat{\bold J}$ is:
+\begin{align*}
+\nabla\hat{\bold J}(\Lambda) = 2 M^TM\Lambda - 2M^Tb
+\end{align*}
+Notice that if we assume that $M^T=M^*$, setting $\nabla\hat{J}(\Lambda)=0$ gives us the system (\ref{vir_grad_sys}). If we now differentiate $\nabla \hat{\bold J}(\Lambda)$, we get the Hessian we wanted:
+\begin{align}
+\nabla^2 \hat{\bold J}(\Lambda) = 2 M^TM
+\end{align}
+\end{proof}
+\noindent
+This means that if $M^*=M^T$, then $M^*M$ is the Hessian of $\frac{1}{2}\hat{\bold J}$, and since $\bar{M}$ and $\bar{M}^*$ approximates $M$ and $M^*$, the matrix $\bar{M}^{*}\bar{M}$ should be an approximation of $\frac{1}{2}\nabla^2 \hat{\bold J}$, which means its inverse $\bar{M}^{-1}\bar{M}^{-*}$ should approximate the inverse Hessian. However as we have already said, these conclusions are based on the assumption that $M^*=M^T$. Let us therefore investigate if this assumption holds when we solve the virtual problem (\ref{virtual_func}-\ref{virtual}) for equation (\ref{virtual_exs}). 
+\\
+\\
+Let the fine propagator $\bold F_{\Delta T}$ and the fine adjoint propagator $\bold F_{\Delta T}^*$ solve equations (\ref{virtual_exs}) and (\ref{virtual_adjoint_exs}) exactly. Due to the simplicity of these equations, we can easily write up the solutions of these equations:
+\begin{align}
+y(t)&=y(0)e^{at}, \\
+p(t)&=p(\Delta T) e^{a(\Delta T-t)}
+\end{align} 
+This means that $\bold F_{\Delta T}(\omega)=y(\Delta T)=\omega e^{a\Delta T}$, and that $\bold F_{\Delta T}^*(\omega)=p(0)=\omega e^{a\Delta T}$. If we insert these expressions into $M$ and $M^*$, we get:
+\begin{align*}
+M = \left[ \begin{array}{cccc}
+   1 & 0 & \cdots & 0 \\  
+   -e^{a\Delta T} & 1 & 0 & \cdots \\ 
+   0 &-e^{a\Delta T} & 1  & \cdots \\
+   0 &\cdots &-e^{a\Delta T} & 1  \\
+   \end{array}  \right],
+M^* =\left[ \begin{array}{cccc}
+   	 1& - e^{a\Delta T} & 0 & 0 \\  
+  	 0 & 1 & - e^{a\Delta T} & \cdots \\ 
+  	 \cdots &0 &  1 & - e^{a\Delta T} \\
+  	 0 &\cdots &\cdots &  1  \\
+  	 \end{array}  \right]
+\end{align*}
+Looking at the $M$ and $M^*$ matrices above, it is quite clear that $M^*=M^T$. If one instead let the underlying solvers of $\bold F_{\Delta T}$ and $\bold F_{\Delta T}^*$ be based on a numerical method, the $M$ and $M^*$ matrices will depend on the choice of this method. When we discretize the state and adjoint equations, we want the matrices $M$ and $M^*$ to behave as they did for non-discrete $\bold F_{\Delta T}$ and $\bold F_{\Delta T}^*$. We must therefore chose consistent numerical schemes when discretizing the state and adjoint equations. 
+\\
+\\
+Since $\bar{M}$ and $\bar{M}^{*}$ are only approximations of $M$ and $M^*$, we might think that $\bar{M}^*=\bar{M}^T$ is unnecessary. However since we want to use $\bar{M}^{-1}\bar{M}^{-*}$ as an initial inverse Hessian approximation in our BFGS-optimization algorithm, we need $\bar{M}^{-1}\bar{M}^{-*}$ to be symmetric positive definite. This is true if $\bar{M}^*=\bar{M}^T$, because the matrix product between an invertible matrix and its transpose always is positive definite. This holds because:
+\begin{align*}
+x^TM^TMx=(Mx)^TMx=||Mx||^2\geq &0, \quad \textrm{and} \\
+||Mx||^2=0 \iff x=&0
+\end{align*}
+The second requirement for positive definiteness is true if $M$ is invertible, which is trivially true, since $M$ is a triangular matrix with the identity on its diagonal, and this means that $M$ has a non-zero determinant. Since $\bar{M}^*=\bar{M}^T$ guaranties that $\bar{M}^{-1}\bar{M}^{-*}$ is positive definite, we want to choose a coarse propagators that gives us this property. Let us try to find out how we need to define $\bold G_{\Delta T}^*$, when we use the coarse propagator suggested in \cite{lions2001resolution} written up in (\ref{G_Backward}) based on the implicit Euler finite difference scheme. For equation (\ref{virtual_exs}), we can use (\ref{G_Backward}) to derive an expression for evaluating the coarse propagator $\bold G_{\Delta T}(\omega)$:
+\begin{align}
+\frac{\bold{G}_{\Delta T}(\omega) -\omega}{\Delta T } - a \bold{G}_{\Delta T}(\omega) &= 0 \\
+\bold{G}_{\Delta T}(\omega)(1-a\Delta T)&= \omega \\
+\bold{G}_{\Delta T}(\omega)&=\frac{\omega}{(1-a\Delta T)}
+\end{align}
+The implicit Euler coarse propagator for equation (\ref{virtual_exs}) then reads:
+\begin{align*}
+\bar M = \left[ \begin{array}{cccc}
+   	\mathbbold{1} & 0 & \cdots & 0 \\  
+   	\frac{-1}{1-a\Delta T} & \mathbbold{1} & 0 & \cdots \\ 
+   	0 &\frac{-1}{1-a\Delta T} & \mathbbold{1}  & \cdots \\
+   	0 &\cdots &\frac{-1}{1-a\Delta T} & \mathbbold{1}  \\
+  	\end{array}  \right]
+\end{align*}
+In order for us to get $\bar{M}^*=\bar{M}^T$, we the discretization of (\ref{virtual_adjoint_exs}) to produce $\bold{G}_{\Delta T}^*(\omega)=\frac{\omega}{(1-a\Delta T)}$. Maybe unsurprisingly, it turns out that this is achieved by again discretizing (\ref{virtual_adjoint_exs}) using implicit Euler. $\bold{G}_{\Delta T}^*(\omega)$ is found as follows:
+\begin{align*}
+\frac{\omega-\bold{G}_{\Delta T}^*(\omega)}{\Delta T} + a \bold{G}_{\Delta T}^*(\omega)&=0 \\
+\bold{G}_{\Delta T}^*(\omega)(a\Delta T-1)&=-\omega \\
+\bold{G}_{\Delta T}^*(\omega)&=\frac{\omega}{(1-a\Delta T)}
+\end{align*}
+In the above derivation for $\bold{G}_{\Delta T}^*(\omega)$, the forward Euler finite difference scheme is used to discretize (\ref{virtual_adjoint_exs}), but since this equation is solved backwards in time this scheme is implicit. Since $\bold{G}_{\Delta T}^*(\omega)=\bold{G}_{\Delta T}(\omega)$, we get that $\bar{M}^*=\bar{M}^T$, which means that $\bar{M}^{-1}\bar{M}^{-*}$ is a valid choice for an initial inverted Hessian approximation in the BFGS-algorithm.
+\subsection{Non-linear state equations}
+If the governing equation of the fine propagator $\bold F_{\Delta T}$ in system (\ref{virtual_func}-\ref{virtual}) is non-linear, the Hessian of the non-linearly constrained objective function would not be equal to the Hessian stated in proposition \ref{prop_lLS}. However, we can still use the least square formulation (\ref{vector_J}) for minimization of the reduced objective function, which looks like: 
+\begin{align}
+\hat{\bold J}(\Lambda) = x(\Lambda)^Tx(\Lambda), \quad x:\mathbb{R}^{N-1}\rightarrow \mathbb{R}^{N-1} \label{non_lin_LS}
+\end{align} 
+Here the components of $x$ are defined as $x_i(\Lambda)=\lambda_{i}-\bold F_{\Delta T}(\lambda_{i-1})$, $i=1,...,N-1$. Let us now state the Hessian of the reduced objective function (\ref{non_lin_LS}) in terms of $x$, and the propagator in a proposition:
+\begin{proposition}\label{NonLin_prop}
+The Hessian of function (\ref{non_lin_LS}) is
+\begin{align*}
+\nabla^2 \hat{\bold J}(\Lambda) &= 2\nabla x^T\nabla x + 2\sum_{i=1}^{N-1} \nabla^2 x_i(\Lambda) x_i(\Lambda)\\
+&=2M(\Lambda)^TM(\Lambda) + 2D(\Lambda)
+\end{align*}
+Here $D(\Lambda)$ is a diagonal matrix with diagonal entries 
+\begin{align*}
+D_i=-\bold{F}_{\Delta T}''(\lambda_i)(\lambda_{i+1}-\bold F_{\Delta T}(\lambda_i)) \quad i=1,...,N-1,
+\end{align*}
+while $M(\Lambda)$ is the linearised forward model:
+\begin{align*}
+M(\Lambda) &= \left[ \begin{array}{cccc}
+   \mathbbold{1} & 0 & \cdots & 0 \\  
+   -\bold{F}_{\Delta T}'(\lambda_{1}) & \mathbbold{1} & 0 & \cdots \\ 
+   0 &-\bold{F}_{\Delta T}'(\lambda_{2}) & \mathbbold{1}  & \cdots \\
+   0 &\cdots &-\bold{F}_{\Delta T}'(\lambda_{N-1}) & \mathbbold{1}  \\
+   \end{array}  \right]
+\end{align*}	
+\end{proposition}
+\begin{proof}
+We start by differentiating $\hat{\bold J}$:
+\begin{align*}
+\nabla \hat{\bold J}(\Lambda) &= 2 \nabla x(\Lambda)^T x(\Lambda)\\
+&=2\sum_{i=1}^{N-1} \nabla x_i(\Lambda) x_i(\Lambda)
+\end{align*}
+If we now differentiate $\nabla \hat{\bold J}$, we get:
+\begin{align*}
+\nabla^2 \hat{\bold J}(\Lambda) &= 2\nabla x^T\nabla x + 2\sum_{i=1}^{N-1} \nabla^2 x_i(\Lambda) x_i(\Lambda)
+\end{align*}
+We see that $\nabla x(\Lambda)=M(\Lambda)$, by looking at $\frac{\partial x_i}{\partial \lambda_j}$
+\begin{align*}
+\frac{\partial x_i}{\partial \lambda_j} = \left\{
+     \begin{array}{lr}
+		1 \quad\quad\quad\quad\quad i=j\\
+		-\bold F_{\Delta T}'(\lambda_{j}) \quad i>1 \wedge j=i-1 \\
+		0 \quad\quad\quad\quad\quad i\neq j \vee j\neq i-1
+	\end{array}
+   \right.	
+\end{align*}
+We can similarly find $\nabla^2 x_i$ by differentiating $x$ twice:
+\begin{align*}
+\frac{\partial^2 x_i}{\partial \lambda_j\partial\lambda_k} = \left\{
+     \begin{array}{lr}
+		-\bold F_{\Delta T}''(\lambda_{j}) \quad i>1 \wedge j=k=i-1 \\
+		0 \quad\textrm{in all other cases}
+	\end{array}
+   \right.	
+\end{align*}
+Now summing up the terms $\nabla^2 x_i(\Lambda)x_i(\Lambda)$ would yield the diagonal matrix $D(\Lambda)$ described in proposition \ref{NonLin_prop}.
+\end{proof}
+\noindent
+As we have seen the Hessian of the non-linear problem consists of two parts. One is the linearised forward model multiplied with its adjoint, while the second part is a diagonal matrix related to the second derivative of the propagator $\bold F_{\Delta T}$, and the residuals $\lambda_i-\bold F_{\Delta T}$. The first part of $\nabla^2 \bold{\hat{J}}$ is analogue to the Hessian of the linear problem. It is symmetric positive definite, and taking its inverse corresponds to first applying the backwards model, and then the forward model. What makes the Hessian of the non-linear problematic is therefore its second term. The first issue with the diagonal matrix $D(\Lambda)$, is how to calculate $\bold F_{\Delta T}''$. Another issue is that we can not guarantee that the sum of $M(\Lambda)^TM(\Lambda)$ and $D(\Lambda)$ is a positive matrix, and the same problem would arise in a coarse approximation of $\nabla^2 \bold{\hat{J}}$. The lack of positivity is a problem since we want to use the coarse approximation as an initial inverted Hessian approximation in the BFGS-algorithm.
+\\
+\\
+A way to get around the $D(\Lambda)$ term in the Hessian for non-linearly constrained problem, is simply to ignore it. This leaves us with the $M(\Lambda)^TM(\Lambda)$ term, which we know how to deal with. Ignoring the term depending on the second derivative and the residual is actually a known strategy for for solving non-linear least square problems. Details can be found in \cite{nocedal2006numerical}. A justification for this approach, is that at least in instances where we are close to a solution, the $\lambda_i-\bold F_{\Delta T}$ terms will be close to zero, and the $M(\Lambda)^TM(\Lambda)$ term will therefore dominate the Hessian. Ignoring the $D(\Lambda)$ term means that we can define an inverse Hessian approximation based on a coarse propagator $\bold G_{\Delta T}$ in the same way as we did for the problem with linear state equation constraints. This means that we define a matrix $\bar M(\Lambda)$:
+\begin{align*}
+\bar M(\Lambda) &= \left[ \begin{array}{cccc}
+   \mathbbold{1} & 0 & \cdots & 0 \\  
+   -\bold{G}_{\Delta T}'(\lambda_{1}) & \mathbbold{1} & 0 & \cdots \\ 
+   0 &-\bold{G}_{\Delta T}'(\lambda_{2}) & \mathbbold{1}  & \cdots \\
+   0 &\cdots &-\bold{G}_{\Delta T}'(\lambda_{N-1}) & \mathbbold{1}  \\
+   \end{array}  \right]
+\end{align*}
+The term $\bar{M}(\Lambda)^{-1}\bar{M}(\Lambda)^{-*}$ can then be used in an approximation of the inverse Hessian, as detailed in section \ref{vir_sec}.
+\subsection{Summary and remarks}
+We end this chapter with a short summary of section \ref{pc sec} and with some remarks on the proposed preconditioner $Q$ in (\ref{Q_PC}). The starting point of the section is the decomposed optimal control problem with time dependent DE constraints on the form:
+\begin{align}
+&\min_{(v,\Lambda)}\hat J_{\mu}(v,\Lambda) =\hat{J}(v)+ \sum_{i=1}^{N-1} (y_{i-1}(T_{i})-\lambda_{i})^2  \\
+&\textrm{Subject to } \ y_{i-1}(T_{i}) = \bold F_{\Delta T}(\lambda_{i-1}) \ i=1,...,N-1 
+\end{align}
+We have presented a the preconditoner $Q\in\mathbb{R}^{n+N\times n+N}$, where $n+1$ is the dimension of the space where the discretized control variable $v$ lives, while $N$ is the number of decomposed subintervals. $Q$ was defined in (\ref{Q_PC}) based on the matrices $\bar M,\bar M^*\in\mathbb{R}^{N-1\times N-1}$, and on block form $Q$ reads as the following:
+\begin{align*}
+Q = \left[ \begin{array}{cc}
+	\mathbbold{1} & 0 \\
+	0 &  \bar{M}^{-1}\bar{M}^{-*}\\
+	\end{array} \right] 
+\end{align*}
+$Q$ is a preconditioner for optimization algorithms, and is supposed to be applied to the the gradient $\nabla \hat J_{\mu}(v,\Lambda)\in\mathbb{R}^{N+n}$ at every iteration. We see that $Q$ only effects the last part of the gradient, which is the $\Lambda$ part of the gradient. One important thing of note about $Q$, is that when $N=2$ both $\bar M$ and $\bar M^*$ are the identity, which means that for $N=2$, $Q=\mathbbold{1}$. Since $Q$ has no effect for $N=2$, we might also expect that for "small" $N$, the effect of $Q$ is only modest, and that the usefulness of $Q$ only materializes for higher values of decomposed subintervals $N$. The last remark on our preconditionr will be a quick explanation of how we typically apply it to the gradient. We do this through a simple example.   
+\\
+\\
+Assume that we decompose $I=[0,T]$ into four sub-intervals $[T_0,T_1], [T_1,T_2], [T_2,T_3]$ and $[T_3,T_4]$. To enforce continuity at the overlapping boundaries, we need three variables $\lambda_1,\lambda_2$ and $\lambda_3$, that represents the initial condition of the state equation at $T_1,T_2$ and $T_3$. We then add quadratic penalty terms to our functional as outlined in section \ref{penalty_sec}. The gradient of our new functional $J(v,\Lambda)$ would then have three components $J_{\lambda_1}, J_{\lambda_2}, J_{\lambda_3}$. These are the components of the gradient that we wish to apply $Q$ to. Applying $Q$ is then done in two steps. We first resolve the backward system that we get from $\bar M^{-*}$:
+\begin{align*}
+\bar{J_{\lambda_1}} &=J_{\lambda_1} +\bold{G}_{\Delta T}^*(J_{\lambda_2} + \bold{G}_{\Delta T}^*(J_{\lambda_3}))\\
+\bar{J_{\lambda_2}} &=J_{\lambda_2} + \bold{G}_{\Delta T}^*(J_{\lambda_3})\\
+\bar{J_{\lambda_3}} &=J_{\lambda_3} 
+\end{align*} 
+Then second step is to apply the forward system:
+\begin{align*}
+\bar{\bar{J_{\lambda_1}}}&=\bar{J_{\lambda_1}} \\
+\bar{\bar{J_{\lambda_2}}}&=\bar{J_{\lambda_2}}+ \bold{G}_{\Delta T}(\bar{J_{\lambda_1}}) \\
+\bar{\bar{J_{\lambda_3}}}&=\bar{J_{\lambda_3}} + \bold{G}_{\Delta T}(\bar{J_{\lambda_2}}+ \bold{G}_{\Delta T}(\bar{J_{\lambda_1}}))
+\end{align*} 
+The result of using $Q$ on the gradient, is that $\Lambda$ part of the gradient is changed to $\bar{\bar{J_{\lambda_1}}}, \bar{\bar{J_{\lambda_2}}},\bar{\bar{J_{\lambda_3}}}$.  
+\end{document}

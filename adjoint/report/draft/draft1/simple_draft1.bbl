@@ -1,0 +1,20 @@
+\begin{thebibliography}{1}
+
+\bibitem{maday2002parareal}
+Yvon Maday and Gabriel Turinici.
+\newblock A parareal in time procedure for the control of partial differential
+  equations.
+\newblock {\em Comptes Rendus Mathematique}, 335(4):387--392, 2002.
+
+\bibitem{rao2014adjoint}
+Vishwas Rao and Adrian Sandu.
+\newblock An adjoint-based scalable algorithm for time-parallel integration.
+\newblock {\em Journal of Computational Science}, 5(2):76--84, 2014.
+
+\bibitem{rao2016time}
+Vishwas Rao and Adrian Sandu.
+\newblock A time-parallel approach to strong-constraint four-dimensional
+  variational data assimilation.
+\newblock {\em Journal of Computational Physics}, 313:583--593, 2016.
+
+\end{thebibliography}
